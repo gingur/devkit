@@ -1,14 +1,12 @@
 # devkit
 
-Shared GitHub Actions, reusable workflows, and dev configs for [@gingur](https://github.com/gingur) projects. One monorepo, pinned by tag.
+Shared GitHub Actions and reusable workflows for [@gingur](https://github.com/gingur) projects. One monorepo, pinned by tag.
 
 ## Layout
 
 ```
 .github/workflows/   reusable workflows  — uses: gingur/devkit/.github/workflows/<name>.yml@v1
 actions/             composite actions   — uses: gingur/devkit/actions/<name>@v1
-configs/             shared eslint/tsconfig/prettier/etc.
-scripts/             one-off shell/node utilities
 ```
 
 > Reusable workflows must live directly in `.github/workflows/` (GitHub requirement — no subdirs). Use filename prefixes to group: `ci-*.yml`, `release-*.yml`, etc.

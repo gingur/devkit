@@ -1,0 +1,66 @@
+name: Node CI
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version'
+        type: string
+        required: false
+        default: '20'
+      pnpm-version:
+        description: 'pnpm version'
+        type: string
+        required: false
+        default: '9'
+      working-directory:
+        description: 'Directory containing package.json'
+        type: string
+        required: false
+        default: '.'
+      lint-script:
+        description: 'pnpm script to run for lint'
+        type: string
+        required: false
+        default: 'lint'
+      typecheck-script:
+        description: 'pnpm script to run for typecheck'
+        type: string
+        required: false
+        default: 'typecheck'
+      test-script:
+        description: 'pnpm script to run for tests'
+        type: string
+        required: false
+        default: 'test'
+      runs-on:
+        description: 'Runner label'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ${{ inputs.runs-on }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: gingur/devkit/actions/setup-node-pnpm@v1
+        with:
+          node-version: ${{ inputs.node-version }}
+          pnpm-version: ${{ inputs.pnpm-version }}
+
+      - name: Lint
+        run: pnpm ${{ inputs.lint-script }}
+
+      - name: Typecheck
+        run: pnpm ${{ inputs.typecheck-script }}
+
+      - name: Test
+        run: pnpm ${{ inputs.test-script }}

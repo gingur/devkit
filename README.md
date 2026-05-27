@@ -1,12 +1,12 @@
 # devkit
 
-Shared GitHub Actions and reusable workflows for [@gingur](https://github.com/gingur) projects. One monorepo, pinned by tag.
+Shared GitHub Actions and reusable workflows for [@gingur](https://github.com/gingur) projects. One monorepo, consumed by `@main`.
 
 ## Layout
 
 ```
-.github/workflows/   reusable workflows  — uses: gingur/devkit/.github/workflows/<name>.yml@v1
-actions/             composite actions   — uses: gingur/devkit/actions/<name>@v1
+.github/workflows/   reusable workflows  — uses: gingur/devkit/.github/workflows/<name>.yml@main
+actions/             composite actions   — uses: gingur/devkit/actions/<name>@main
 ```
 
 > Reusable workflows must live directly in `.github/workflows/` (GitHub requirement — no subdirs). Use filename prefixes to group: `ci-*.yml`, `release-*.yml`, etc.
@@ -18,7 +18,7 @@ actions/             composite actions   — uses: gingur/devkit/actions/<name>@
 ```yaml
 jobs:
   ci:
-    uses: gingur/devkit/.github/workflows/ci-node.yml@v1
+    uses: gingur/devkit/.github/workflows/ci-node.yml@main
     with:
       node-version: "20"
 ```
@@ -27,9 +27,9 @@ jobs:
 
 ```yaml
 steps:
-  - uses: gingur/devkit/actions/setup-node-pnpm@v1
+  - uses: gingur/devkit/actions/setup-node-pnpm@main
 ```
 
 ## Versioning
 
-Pin to `@v1`. The major-version tag (`v1`, `v2`, ...) moves forward on every non-breaking release; breaking changes advance the major. **Don't pin to `main`** — it's the bleeding edge.
+Pin to `@main`. Personal tools — backwards compatibility is maintained by hand rather than via tags. Pin to a SHA if you ever need a frozen reference point.

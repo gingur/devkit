@@ -51,7 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: gingur/devkit/actions/setup-node-pnpm@v1
+      - uses: gingur/devkit/actions/setup-node-pnpm@main
         with:
           node-version: ${{ inputs.node-version }}
           pnpm-version: ${{ inputs.pnpm-version }}

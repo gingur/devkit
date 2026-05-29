@@ -1,0 +1,13 @@
+{
+  "name": "@gingur/devkit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tsconfig":    "./configs/tsconfig.base.json",
+    "./eslint":      "./configs/eslint.config.mjs",
+    "./prettier":    "./configs/prettier.config.mjs",
+    "./lint-staged": "./configs/lint-staged.config.js"
+  },
+  "files": ["configs", "actions", ".github"]
+}

@@ -1,15 +1,15 @@
 name: 'Setup Node + pnpm'
-description: 'Install pnpm and Node.js with dependency caching, then optionally run pnpm install --frozen-lockfile.'
+description: 'Install pnpm and Node.js with dependency caching. Versions default to .nvmrc (Node) and the package.json packageManager field (pnpm) when inputs are unset; pass an input to override.'
 
 inputs:
   node-version:
-    description: 'Node.js version'
+    description: 'Node.js version. Optional override. When unset, reads from .nvmrc.'
     required: false
-    default: '20'
+    default: ''
   pnpm-version:
-    description: 'pnpm version'
+    description: 'pnpm version. Optional override. When unset, reads from package.json packageManager field.'
     required: false
-    default: '9'
+    default: ''
   install:
     description: 'Run pnpm install --frozen-lockfile after setup'
     required: false
@@ -23,10 +23,11 @@ runs:
       with:
         version: ${{ inputs.pnpm-version }}
 
-    - name: Setup Node.js ${{ inputs.node-version }}
+    - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
+        node-version-file: .nvmrc
         cache: 'pnpm'
 
     - name: Install dependencies

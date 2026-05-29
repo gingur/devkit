@@ -1,0 +1,73 @@
+name: Deploy Cloudflare Worker
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version (optional override). Empty means read from .nvmrc.'
+        type: string
+        required: false
+        default: ''
+      pnpm-version:
+        description: 'pnpm version (optional override). Empty means read from packageManager field.'
+        type: string
+        required: false
+        default: ''
+      build-command:
+        description: 'Build command to run before deploy'
+        type: string
+        required: false
+        default: 'pnpm build'
+      working-directory:
+        description: 'Directory containing package.json + wrangler.toml'
+        type: string
+        required: false
+        default: '.'
+      environment:
+        description: 'Deployment target: production | preview. Validated by case guard; also sets the GitHub Environment for this job.'
+        type: string
+        required: true
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Validate environment input
+        shell: bash
+        run: |
+          case "${{ inputs.environment }}" in
+            production|preview) ;;
+            *)
+              echo "::error::environment must be one of: production, preview (got: '${{ inputs.environment }}')"
+              exit 1
+              ;;
+          esac
+
+      - uses: actions/checkout@v4
+
+      - uses: gingur/devkit/actions/setup-node-pnpm@main
+        with:
+          node-version: ${{ inputs.node-version }}
+          pnpm-version: ${{ inputs.pnpm-version }}
+
+      - name: Build
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        run: ${{ inputs.build-command }}
+
+      - name: Deploy
+        uses: gingur/devkit/actions/deploy-cf-worker@main
+        with:
+          working-directory: ${{ inputs.working-directory }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

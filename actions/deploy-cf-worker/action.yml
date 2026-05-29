@@ -1,0 +1,26 @@
+name: 'Deploy Cloudflare Worker'
+description: 'Run wrangler against a pre-built directory via cloudflare/wrangler-action@v3. Caller must export CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID on the calling step.'
+
+inputs:
+  working-directory:
+    description: 'Directory containing wrangler.toml'
+    required: false
+    default: '.'
+  environment:
+    description: 'wrangler --env value. Empty means run without --env.'
+    required: false
+    default: ''
+  command:
+    description: 'wrangler subcommand'
+    required: false
+    default: 'deploy'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Deploy
+      uses: cloudflare/wrangler-action@v3
+      with:
+        workingDirectory: ${{ inputs.working-directory }}
+        environment: ${{ inputs.environment }}
+        command: ${{ inputs.command }}

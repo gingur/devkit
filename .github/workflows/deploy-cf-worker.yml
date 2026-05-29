@@ -1,0 +1,108 @@
+name: Deploy Cloudflare Worker
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version (optional override). Empty means read from .nvmrc.'
+        type: string
+        required: false
+        default: ''
+      pnpm-version:
+        description: 'pnpm version (optional override). Empty means read from packageManager field.'
+        type: string
+        required: false
+        default: ''
+      build-command:
+        description: 'Build command to run before deploy'
+        type: string
+        required: false
+        default: 'pnpm build'
+      working-directory:
+        description: 'Directory containing package.json + wrangler.toml'
+        type: string
+        required: false
+        default: '.'
+      environment:
+        description: 'Deployment target: production | preview. Validated by case guard; sets the GitHub Environment for this job.'
+        type: string
+        required: true
+      infisical-project-slug:
+        description: 'Infisical project slug (e.g., gingur-7xjq)'
+        type: string
+        required: true
+      infisical-env-slug:
+        description: 'Infisical environment slug (e.g., production)'
+        type: string
+        required: true
+      infisical-secret-path:
+        description: 'Infisical secret folder path (e.g., /troyrhinehart)'
+        type: string
+        required: true
+      infisical-identity-id:
+        description: 'Infisical machine identity UUID with OIDC trust for this repo'
+        type: string
+        required: true
+      infisical-oidc-audience:
+        description: 'OIDC audience claim (must match the identity configuration)'
+        type: string
+        required: false
+        default: 'https://github.com/gingur'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Validate environment input
+        shell: bash
+        run: |
+          case "${{ inputs.environment }}" in
+            production|preview) ;;
+            *)
+              echo "::error::environment must be one of: production, preview (got: '${{ inputs.environment }}')"
+              exit 1
+              ;;
+          esac
+
+      - uses: actions/checkout@v4
+
+      - uses: gingur/devkit/actions/setup-node-pnpm@main
+        with:
+          node-version: ${{ inputs.node-version }}
+          pnpm-version: ${{ inputs.pnpm-version }}
+
+      - name: Install dependencies
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        run: ${{ inputs.build-command }}
+
+      - name: Fetch CF credentials from Infisical via GitHub OIDC
+        uses: Infisical/secrets-action@v1.0.16
+        with:
+          method: oidc
+          identity-id: ${{ inputs.infisical-identity-id }}
+          oidc-audience: ${{ inputs.infisical-oidc-audience }}
+          project-slug: ${{ inputs.infisical-project-slug }}
+          env-slug: ${{ inputs.infisical-env-slug }}
+          secret-path: ${{ inputs.infisical-secret-path }}
+          export-type: env
+
+      - name: Deploy
+        uses: gingur/devkit/actions/deploy-cf-worker@main
+        with:
+          working-directory: ${{ inputs.working-directory }}
+        env:
+          # Infisical fetched CF_API_TOKEN / CF_ACCOUNT_ID into the job env;
+          # wrangler-action expects them under the CLOUDFLARE_* names — remap here.
+          CLOUDFLARE_API_TOKEN: ${{ env.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ env.CF_ACCOUNT_ID }}

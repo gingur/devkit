@@ -30,6 +30,22 @@ steps:
   - uses: gingur/devkit/actions/setup-node-pnpm@main
 ```
 
-## Versioning
+## Conventions
 
-Pin to `@main`. Personal tools — backwards compatibility is maintained by hand rather than via tags. Pin to a SHA if you ever need a frozen reference point.
+### Versioning
+
+Pin to `@main`. This is the gingur consumer convention — single maintainer, single direction of change, so there's no benefit to maintaining version tags. Reproducibility lives on the consumer side via lockfile-pinned SHAs (e.g. `pnpm-lock.yaml` records the resolved commit when devkit is consumed as a git URL dep).
+
+Need a frozen reference point (paused upgrade, post-mortem snapshot)? Pin to a specific SHA: `gingur/devkit/...@<sha>`.
+
+### Environments
+
+Three names, one CI surface:
+
+| Name | Where | Notes |
+|---|---|---|
+| `production` | CI | The deployed instance. |
+| `preview` | CI | PR / branch previews. Same shape, separate target. |
+| `local` | Developer machine | Never appears in CI. Outside the workflow input enum. |
+
+Reusable workflows and actions only accept `production | preview` for the `environment` input. `local` is a convention for human developers — it exists to give that mode a name without ever leaking into CI.

@@ -30,6 +30,35 @@ steps:
   - uses: gingur/devkit/actions/setup-node-pnpm@main
 ```
 
+**Shared configs:**
+
+Add devkit as a dev dependency and re-export the config you need:
+
+```jsonc
+// package.json
+"devDependencies": { "@gingur/devkit": "github:gingur/devkit#main" }
+```
+
+```js
+// eslint.config.mjs
+export { default } from '@gingur/devkit/eslint';
+```
+
+| Export | File | Bring your own |
+|---|---|---|
+| `@gingur/devkit/eslint` | `eslint.config.mjs` | `eslint`, `@eslint/js`, `typescript-eslint`, `typescript` |
+| `@gingur/devkit/prettier` | `prettier.config.mjs` | `prettier` |
+| `@gingur/devkit/lint-staged` | `lint-staged.config.js` | `prettier`, `eslint` |
+| `@gingur/devkit/tsconfig` | `tsconfig.base.json` | `typescript` |
+
+These tools are **not** bundled — the configs reference them but consumers install
+them. They are declared as `peerDependencies` (so your package manager warns when
+one is missing); install the ones for the exports you use:
+
+```bash
+pnpm add -D eslint @eslint/js typescript-eslint typescript prettier
+```
+
 ## Conventions
 
 ### Versioning

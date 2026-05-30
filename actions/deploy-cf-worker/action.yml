@@ -1,7 +1,13 @@
 name: 'Deploy Cloudflare Worker'
-description: 'Run wrangler against a pre-built directory via cloudflare/wrangler-action@v4. Caller must export CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID on the calling step; they are forwarded to wrangler-action as inputs (v4 does not read them from the environment).'
+description: 'Run wrangler against a pre-built directory via cloudflare/wrangler-action@v4. Cloudflare credentials are passed as inputs (v4 takes them via inputs, not environment variables).'
 
 inputs:
+  api-token:
+    description: 'Cloudflare API token'
+    required: true
+  account-id:
+    description: 'Cloudflare account ID'
+    required: true
   working-directory:
     description: 'Directory containing wrangler.toml'
     required: false
@@ -21,10 +27,8 @@ runs:
     - name: Deploy
       uses: cloudflare/wrangler-action@v4
       with:
-        # wrangler-action@v4 takes credentials via inputs, not env vars — it
-        # scrubs CLOUDFLARE_* from the environment before invoking wrangler.
-        apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
-        accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+        apiToken: ${{ inputs.api-token }}
+        accountId: ${{ inputs.account-id }}
         workingDirectory: ${{ inputs.working-directory }}
         environment: ${{ inputs.environment }}
         command: ${{ inputs.command }}

@@ -4,15 +4,15 @@ on:
   workflow_call:
     inputs:
       node-version:
-        description: 'Node.js version'
+        description: 'Node.js version (optional override). Empty means read from .nvmrc.'
         type: string
         required: false
-        default: '20'
+        default: ''
       pnpm-version:
-        description: 'pnpm version'
+        description: 'pnpm version (optional override). Empty means read from packageManager field.'
         type: string
         required: false
-        default: '9'
+        default: ''
       working-directory:
         description: 'Directory containing package.json'
         type: string

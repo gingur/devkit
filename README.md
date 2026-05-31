@@ -67,6 +67,22 @@ Pin to `@main`. This is the gingur consumer convention — single maintainer, si
 
 Need a frozen reference point (paused upgrade, post-mortem snapshot)? Pin to a specific SHA: `gingur/devkit/...@<sha>`.
 
+### Action pinning
+
+**Third-party** actions (anything not under `gingur/`) are pinned to a full commit SHA with a trailing version comment, per [GitHub's security-hardening guidance](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#using-third-party-actions) — a mutable tag like `@v4` can be repointed at malicious code, a SHA cannot:
+
+```yaml
+uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4
+```
+
+This includes GitHub-owned `actions/*` (lower risk, pinned for consistency). **gingur's own** actions and workflows stay on `@main` — that's the consumer convention above, and we control them.
+
+To re-pin after an upstream release, resolve the tag to its commit and update both the SHA and the comment:
+
+```bash
+gh api repos/<owner>/<repo>/commits/<tag> --jq .sha
+```
+
 ### Environments
 
 Three names, one CI surface:
@@ -78,3 +94,16 @@ Three names, one CI surface:
 | `local` | Developer machine | Never appears in CI. Outside the workflow input enum. |
 
 Reusable workflows and actions only accept `production | preview` for the `environment` input. `local` is a convention for human developers — it exists to give that mode a name without ever leaking into CI.
+
+## Secret rotation
+
+Infisical is the single source of truth for deploy credentials. Rotate in **one place** and it propagates to every consumer on the next OIDC fetch — no per-repo secrets, no commits, no PRs. The `deploy-cf-worker.yml` workflow fetches `CF_API_TOKEN` / `CF_ACCOUNT_ID` from Infisical at deploy time, so consumers never store them.
+
+When rotating a Cloudflare API token (annual, or on compromise / personnel change):
+
+1. **Generate the new token** — Cloudflare dashboard → My Profile → API Tokens → Create. Minimum scope: Workers Scripts (Edit), Account Settings (Read), per-zone Workers Routes (Edit).
+2. **Update the value in Infisical** — project → env → folder → click the secret → edit value → save. The audit log captures the change.
+3. **Verify** — trigger any consuming workflow (or wait for the next scheduled run). The next OIDC fetch returns the new value automatically; no consumer-side config change.
+4. **Revoke the old token** in Cloudflare once propagation is confirmed (24h grace recommended in case a background job cached the old value — our workflows don't cache, but the margin is cheap).
+
+> During an incident, this is the runbook: rotate in Infisical (step 2), then revoke at Cloudflare (step 4). Everything else follows automatically.

@@ -1,0 +1,78 @@
+name: Smoke — deploy credential handoff
+
+# Regression guard for #22/#23/#24: cloudflare/wrangler-action@v4 takes
+# Cloudflare credentials via its INPUTS, not environment variables. An earlier
+# smoke test only verified the Infisical OIDC exchange and never invoked
+# wrangler, so a broken handoff (creds in env only) reached production with
+# "must set a CLOUDFLARE_API_TOKEN environment variable".
+#
+# This test runs the deploy-cf-worker composite with bogus-but-present creds
+# and `wrangler whoami`, then inspects wrangler's debug log:
+#   - handoff intact  -> wrangler issues a Cloudflare API request (then fails
+#                        auth on the bogus token). PASS.
+#   - handoff broken  -> wrangler never contacts the API and reports missing
+#                        credentials / "not authenticated". FAIL.
+# wrangler-action's command-output/command-stderr outputs are empty on a failed
+# command, so the debug-log file (always written) is the reliable signal.
+#
+# Locally reproducible with act + podman:
+#   act push -W .github/workflows/smoke-deploy-creds.yml -j cred-handoff \
+#     -P ubuntu-latest=catthehacker/ubuntu:act-latest \
+#     --container-daemon-socket "unix://$XDG_RUNTIME_DIR/podman/podman.sock"
+
+on:
+  pull_request:
+    paths:
+      - 'actions/deploy-cf-worker/**'
+      - '.github/workflows/smoke-deploy-creds.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'actions/deploy-cf-worker/**'
+      - '.github/workflows/smoke-deploy-creds.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cred-handoff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Probe deploy-cf-worker with bogus creds
+        id: probe
+        continue-on-error: true # bogus token => wrangler exits non-zero; that is expected
+        env:
+          WRANGLER_LOG: debug # ensure the API request is recorded in the log file
+        uses: ./actions/deploy-cf-worker
+        with:
+          # Bogus but PRESENT — we only test that the value reaches wrangler.
+          api-token: smoke-bogus-token-aaaaaaaaaaaaaaaaaaaaaaaa
+          account-id: 0000000000000000000000000000smoke
+          command: whoami
+
+      - name: Assert wrangler reached the Cloudflare API
+        shell: bash
+        run: |
+          mapfile -t logs < <(find "$HOME" -type f -path '*/.wrangler/logs/*.log' 2>/dev/null)
+          if [ ${#logs[@]} -eq 0 ]; then
+            echo "::error::No wrangler log files found — cannot verify the credential handoff (probe outcome: ${{ steps.probe.outcome }})."
+            exit 1
+          fi
+          echo "Found ${#logs[@]} wrangler log file(s):"
+          printf '  %s\n' "${logs[@]}"
+
+          if grep -RqiE 'api\.cloudflare\.com|CF API REQUEST' "${logs[@]}"; then
+            echo "PASS: wrangler issued a Cloudflare API request — the composite handed the token to wrangler (it then failed auth on the bogus token, as expected)."
+            exit 0
+          fi
+
+          if grep -RqiE 'not authenticated|wrangler login|CLOUDFLARE_API_TOKEN' "${logs[@]}"; then
+            echo "::error::Regression: wrangler never contacted the Cloudflare API and reported missing credentials — deploy-cf-worker is not handing the token to wrangler (see #22/#23/#24)."
+            exit 1
+          fi
+
+          echo "::error::Could not find a Cloudflare API request in wrangler logs, nor a missing-credential marker. Review the logs listed above."
+          exit 1

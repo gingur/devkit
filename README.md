@@ -107,3 +107,21 @@ When rotating a Cloudflare API token (annual, or on compromise / personnel chang
 4. **Revoke the old token** in Cloudflare once propagation is confirmed (24h grace recommended in case a background job cached the old value — our workflows don't cache, but the margin is cheap).
 
 > During an incident, this is the runbook: rotate in Infisical (step 2), then revoke at Cloudflare (step 4). Everything else follows automatically.
+
+## Testing
+
+### Deploy credential handoff smoke test
+
+`cloudflare/wrangler-action@v4` takes Cloudflare credentials via its **inputs**, not environment variables (it scrubs `CLOUDFLARE_*` from the env). A regression that passed creds via env once shipped to production as `must set a CLOUDFLARE_API_TOKEN environment variable`, because the original smoke test only verified the Infisical OIDC exchange and never invoked wrangler.
+
+`.github/workflows/smoke-deploy-creds.yml` guards against that class of bug: it runs the `deploy-cf-worker` composite with bogus-but-present creds and `wrangler whoami`, then inspects wrangler's debug log. If the handoff is intact, wrangler issues a Cloudflare API request (and fails auth on the bogus token) — **pass**. If it's broken, wrangler never contacts the API and reports missing credentials — **fail**. It runs in CI on changes to the composite or the workflow, and on `workflow_dispatch`.
+
+Run it locally with [`act`](https://github.com/nektos/act) + podman:
+
+```bash
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+systemctl --user enable --now podman.socket
+act push -W .github/workflows/smoke-deploy-creds.yml -j cred-handoff \
+  -P ubuntu-latest=catthehacker/ubuntu:act-latest \
+  --container-daemon-socket "unix://$XDG_RUNTIME_DIR/podman/podman.sock"
+```

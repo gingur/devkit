@@ -69,7 +69,7 @@ jobs:
               ;;
           esac
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - uses: gingur/devkit/actions/setup-node-pnpm@main
         with:
@@ -86,8 +86,11 @@ jobs:
         shell: bash
         run: ${{ inputs.build-command }}
 
+      # CF_API_TOKEN / CF_ACCOUNT_ID live only in Infisical (single source of truth).
+      # To rotate them, see the "Secret rotation" runbook in devkit's README — rotate
+      # in Infisical and the next OIDC fetch below picks up the new value automatically.
       - name: Fetch CF credentials from Infisical via GitHub OIDC
-        uses: Infisical/secrets-action@v1.0.16
+        uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
         with:
           method: oidc
           identity-id: ${{ inputs.infisical-identity-id }}

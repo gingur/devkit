@@ -39,28 +39,30 @@ runs:
         api="https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/workers/domains"
         auth=(-H "Authorization: Bearer ${CF_API_TOKEN}" -H "Content-Type: application/json")
 
-        assert_success() { # $1 = raw API response
-          if [ "$(printf '%s' "$1" | jq -r '.success' 2>/dev/null)" != "true" ]; then
-            echo "::error::Cloudflare API call failed:"; printf '%s\n' "$1"; exit 1
+        # Run a CF API call; success is the HTTP status (2xx), not a body field —
+        # DELETE returns 204 with an empty body. Sets BODY; surfaces the real
+        # error body on any non-2xx.
+        cf() {
+          local out status
+          out=$(curl -sS -w '\n%{http_code}' "${auth[@]}" "$@")
+          status=${out##*$'\n'}; BODY=${out%$'\n'*}
+          if [ "${status:0:1}" != "2" ]; then
+            echo "::error::Cloudflare API ${status}:"; printf '%s\n' "$BODY"; exit 1
           fi
         }
 
         case "$MODE" in
           attach)
-            resp=$(curl -sS "${auth[@]}" -X PUT "$api" \
+            cf -X PUT "$api" \
               --data "$(jq -n --arg h "$HOSTNAME" --arg s "$SERVICE" --arg z "$ZONE_ID" \
-                        '{hostname:$h, service:$s, zone_id:$z}')")
-            assert_success "$resp"
+                        '{hostname:$h, service:$s, zone_id:$z}')"
             echo "Attached $HOSTNAME -> $SERVICE"
             ;;
           detach)
-            list=$(curl -sS "${auth[@]}" -G "$api" \
-              --data-urlencode "hostname=${HOSTNAME}" --data-urlencode "zone_id=${ZONE_ID}")
-            assert_success "$list"
-            id=$(echo "$list" | jq -r '.result[0].id // empty')
+            cf -G "$api" --data-urlencode "hostname=${HOSTNAME}" --data-urlencode "zone_id=${ZONE_ID}"
+            id=$(printf '%s' "$BODY" | jq -r '.result[0].id // empty')
             if [ -z "$id" ]; then echo "No domain binding for $HOSTNAME — nothing to detach."; exit 0; fi
-            resp=$(curl -sS "${auth[@]}" -X DELETE "$api/$id")
-            assert_success "$resp"
+            cf -X DELETE "$api/$id"
             echo "Detached $HOSTNAME (id=$id)"
             ;;
           *)

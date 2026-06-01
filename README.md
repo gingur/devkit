@@ -111,9 +111,80 @@ Infisical is the single source of truth for deploy credentials. Rotate in **one 
 
 When rotating a Cloudflare API token (annual, or on compromise / personnel change):
 
-1. **Generate the new token** — Cloudflare dashboard → My Profile → API Tokens → Create. Minimum scope: Workers Scripts (Edit), Account Settings (Read), per-zone Workers Routes (Edit).
+1. **Generate the new token** — Cloudflare dashboard → My Profile → API Tokens → Create. Minimum scope: Workers Scripts (Edit), Account Settings (Read), per-zone Workers Routes (Edit), per-zone DNS (Edit) (DNS edit is needed for custom-domain previews).
 2. **Update the value in Infisical** — project → env → folder → click the secret → edit value → save. The audit log captures the change.
 3. **Verify** — trigger any consuming workflow (or wait for the next scheduled run). The next OIDC fetch returns the new value automatically; no consumer-side config change.
 4. **Revoke the old token** in Cloudflare once propagation is confirmed (24h grace recommended in case a background job cached the old value — our workflows don't cache, but the margin is cheap).
 
 > During an incident, this is the runbook: rotate in Infisical (step 2), then revoke at Cloudflare (step 4). Everything else follows automatically.
+
+## PR previews
+
+Each PR gets an immutable masked preview at `https://pr-<N>.<domain>`, redeployed on
+every push and torn down when the PR closes. Previews run only for same-repo (branch)
+PRs — fork PRs get no OIDC/secrets by design.
+
+Requires `wrangler.toml` to use **named environments** (see [Environments](#environments)):
+
+```toml
+[assets]
+directory = "./dist"
+
+[env.production]
+name = "<app>"            # production routes / custom domain go here
+
+[env.preview]
+name = "<app>-preview"    # placeholder; overridden per-PR by --name, no custom route
+```
+
+**Preview on PR** — `.github/workflows/cf.worker.preview.yml` in the consumer:
+
+```yaml
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+jobs:
+  preview:
+    uses: gingur/devkit/.github/workflows/cf.worker.preview.yml@main
+    with:
+      app: <app>
+      domain: <your-domain>
+      cfZone: <zone-id>
+      infisicalProject: <project-slug>
+      infisicalEnv: <env-slug>     # where the CF token lives (often "production")
+      infisicalPath: /<app>
+      infisicalIdentity: <identity-uuid>
+    secrets: inherit
+```
+
+**Cleanup on close** — `.github/workflows/cf.worker.preview.cleanup.yml`:
+
+```yaml
+on:
+  pull_request:
+    types: [closed]
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+jobs:
+  cleanup:
+    uses: gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main
+    with:
+      app: <app>
+      domain: <your-domain>
+      cfZone: <zone-id>
+      infisicalProject: <project-slug>
+      infisicalEnv: <env-slug>
+      infisicalPath: /<app>
+      infisicalIdentity: <identity-uuid>
+    secrets: inherit
+```
+
+> The preview worker is named `<app>-pr-<N>` and the URL `pr-<N>.<domain>` is attached
+> as a Workers custom domain — so `<domain>` must be a Cloudflare zone on the same account.
+> The token needs DNS (Edit) on that zone (see [Secret rotation](#secret-rotation)).

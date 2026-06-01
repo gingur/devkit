@@ -2,20 +2,20 @@ name: 'Fetch Infisical secrets'
 description: 'Fetch secrets from Infisical via GitHub OIDC and export them to the job environment. Requires id-token: write in the calling job.'
 
 inputs:
-  identityId:
+  identity:
     description: 'Infisical machine identity UUID with OIDC trust for this repo'
     required: true
-  oidcAudience:
+  audience:
     description: 'OIDC audience claim (must match the identity configuration)'
     required: false
     default: 'https://github.com/gingur'
-  projectSlug:
+  project:
     description: 'Infisical project slug (e.g., gingur-7xjq)'
     required: true
-  envSlug:
+  env:
     description: 'Infisical environment slug (e.g., production)'
     required: true
-  secretPath:
+  path:
     description: 'Infisical secret folder path (e.g., /troyrhinehart)'
     required: true
 
@@ -26,9 +26,9 @@ runs:
       uses: Infisical/secrets-action@v1.0.16
       with:
         method: oidc
-        identity-id: ${{ inputs.identityId }}
-        oidc-audience: ${{ inputs.oidcAudience }}
-        project-slug: ${{ inputs.projectSlug }}
-        env-slug: ${{ inputs.envSlug }}
-        secret-path: ${{ inputs.secretPath }}
+        identity-id: ${{ inputs.identity }}
+        oidc-audience: ${{ inputs.audience }}
+        project-slug: ${{ inputs.project }}
+        env-slug: ${{ inputs.env }}
+        secret-path: ${{ inputs.path }}
         export-type: env

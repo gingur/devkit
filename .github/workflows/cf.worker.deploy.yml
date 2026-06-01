@@ -3,47 +3,47 @@ name: Deploy Cloudflare Worker
 on:
   workflow_call:
     inputs:
-      nodeVersion:
+      node:
         description: 'Node.js version (optional override). Empty means read from .nvmrc.'
         type: string
         required: false
         default: ''
-      pnpmVersion:
+      pnpm:
         description: 'pnpm version (optional override). Empty means read from packageManager field.'
         type: string
         required: false
         default: ''
-      buildCommand:
+      build:
         description: 'Build command to run before deploy'
         type: string
         required: false
         default: 'pnpm build'
-      workingDirectory:
+      cwd:
         description: 'Directory containing package.json + wrangler.toml'
         type: string
         required: false
         default: '.'
-      environment:
+      env:
         description: 'Deployment target: production | preview. Validated by case guard; sets the GitHub Environment for this job.'
         type: string
         required: true
-      infisicalProjectSlug:
+      infisicalProject:
         description: 'Infisical project slug (e.g., gingur-7xjq)'
         type: string
         required: true
-      infisicalEnvSlug:
+      infisicalEnv:
         description: 'Infisical environment slug (e.g., production)'
         type: string
         required: true
-      infisicalSecretPath:
+      infisicalPath:
         description: 'Infisical secret folder path (e.g., /troyrhinehart)'
         type: string
         required: true
-      infisicalIdentityId:
+      infisicalIdentity:
         description: 'Infisical machine identity UUID with OIDC trust for this repo'
         type: string
         required: true
-      infisicalOidcAudience:
+      infisicalAudience:
         description: 'OIDC audience claim (must match the identity configuration)'
         type: string
         required: false
@@ -56,15 +56,15 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    environment: ${{ inputs.env }}
     steps:
       - name: Validate environment input
         shell: bash
         run: |
-          case "${{ inputs.environment }}" in
+          case "${{ inputs.env }}" in
             production|preview) ;;
             *)
-              echo "::error::environment must be one of: production, preview (got: '${{ inputs.environment }}')"
+              echo "::error::environment must be one of: production, preview (got: '${{ inputs.env }}')"
               exit 1
               ;;
           esac
@@ -73,33 +73,33 @@ jobs:
 
       - uses: gingur/devkit/actions/node.setup@main
         with:
-          nodeVersion: ${{ inputs.nodeVersion }}
-          pnpmVersion: ${{ inputs.pnpmVersion }}
+          node: ${{ inputs.node }}
+          pnpm: ${{ inputs.pnpm }}
 
       - name: Install dependencies
-        working-directory: ${{ inputs.workingDirectory }}
+        working-directory: ${{ inputs.cwd }}
         shell: bash
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        working-directory: ${{ inputs.workingDirectory }}
+        working-directory: ${{ inputs.cwd }}
         shell: bash
-        run: ${{ inputs.buildCommand }}
+        run: ${{ inputs.build }}
 
       # CF_API_TOKEN / CF_ACCOUNT_ID live only in Infisical (single source of truth).
       # To rotate them, see the "Secret rotation" runbook in the README.
       - name: Fetch CF credentials
         uses: gingur/devkit/actions/infisical.secrets.fetch@main
         with:
-          identityId: ${{ inputs.infisicalIdentityId }}
-          oidcAudience: ${{ inputs.infisicalOidcAudience }}
-          projectSlug: ${{ inputs.infisicalProjectSlug }}
-          envSlug: ${{ inputs.infisicalEnvSlug }}
-          secretPath: ${{ inputs.infisicalSecretPath }}
+          identity: ${{ inputs.infisicalIdentity }}
+          audience: ${{ inputs.infisicalAudience }}
+          project: ${{ inputs.infisicalProject }}
+          env: ${{ inputs.infisicalEnv }}
+          path: ${{ inputs.infisicalPath }}
 
       - name: Deploy
         uses: gingur/devkit/actions/cf.worker.deploy@main
         with:
-          workingDirectory: ${{ inputs.workingDirectory }}
-          apiToken: ${{ env.CF_API_TOKEN }}
-          accountId: ${{ env.CF_ACCOUNT_ID }}
+          cwd: ${{ inputs.cwd }}
+          token: ${{ env.CF_API_TOKEN }}
+          account: ${{ env.CF_ACCOUNT_ID }}

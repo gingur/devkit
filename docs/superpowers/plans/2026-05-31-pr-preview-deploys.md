@@ -22,7 +22,7 @@
   SOCK="$XDG_RUNTIME_DIR/podman/podman.sock"
   # act push -W <wf> -j <job> -P ubuntu-latest=catthehacker/ubuntu:act-latest --container-daemon-socket "unix://$SOCK"
   ```
-- **Third-party action `with:` keys** keep the upstream action's own input names (e.g. `Infisical/secrets-action` uses `identity-id`); only **our** action/workflow input *declarations* are camelCase.
+- **Third-party action `with:` keys** keep the upstream action's own input names (e.g. `Infisical/secrets-action` uses `identity-id`); only **our** action/workflow input *declarations* use concise camelCase.
 - **Pinning** (per `CLAUDE.md`): credible-org actions → version tag; `marocchino/sticky-pull-request-comment` → SHA `0ea0beb66eb9baf113663a64ec522f60e49231c0` (# v3.0.4).
 - **Working dir:** all devkit paths are relative to the devkit repo root. The consumer repo is at `../troyrhinehart` (separate git repo — its tasks are committed/pushed there, not in devkit).
 - **Commits:** end messages with the project's `Co-Authored-By` trailer.
@@ -75,11 +75,11 @@ name: 'Setup Node + pnpm'
 description: 'Install pnpm and Node.js with dependency caching. Versions default to .nvmrc (Node) and the package.json packageManager field (pnpm) when inputs are unset; pass an input to override.'
 
 inputs:
-  nodeVersion:
+  node:
     description: 'Node.js version. Optional override. When unset, reads from .nvmrc.'
     required: false
     default: ''
-  pnpmVersion:
+  pnpm:
     description: 'pnpm version. Optional override. When unset, reads from package.json packageManager field.'
     required: false
     default: ''
@@ -94,12 +94,12 @@ runs:
     - name: Install pnpm
       uses: pnpm/action-setup@v6
       with:
-        version: ${{ inputs.pnpmVersion }}
+        version: ${{ inputs.pnpm }}
 
     - name: Setup Node.js
       uses: actions/setup-node@v6
       with:
-        node-version: ${{ inputs.nodeVersion }}
+        node-version: ${{ inputs.node }}
         node-version-file: .nvmrc
         cache: 'pnpm'
 
@@ -139,17 +139,17 @@ name: 'Deploy Cloudflare Worker'
 description: 'Run wrangler against a pre-built directory via cloudflare/wrangler-action. Cloudflare credentials are passed as inputs (it takes them via inputs, not environment variables).'
 
 inputs:
-  apiToken:
+  token:
     description: 'Cloudflare API token'
     required: true
-  accountId:
+  account:
     description: 'Cloudflare account ID'
     required: true
-  workingDirectory:
+  cwd:
     description: 'Directory containing wrangler.toml'
     required: false
     default: '.'
-  environment:
+  env:
     description: 'wrangler --env value. Empty means run without --env.'
     required: false
     default: ''
@@ -164,10 +164,10 @@ runs:
     - name: Deploy
       uses: cloudflare/wrangler-action@v4
       with:
-        apiToken: ${{ inputs.apiToken }}
-        accountId: ${{ inputs.accountId }}
-        workingDirectory: ${{ inputs.workingDirectory }}
-        environment: ${{ inputs.environment }}
+        apiToken: ${{ inputs.token }}
+        accountId: ${{ inputs.account }}
+        workingDirectory: ${{ inputs.cwd }}
+        environment: ${{ inputs.env }}
         command: ${{ inputs.command }}
 ```
 
@@ -195,20 +195,20 @@ name: 'Fetch Infisical secrets'
 description: 'Fetch secrets from Infisical via GitHub OIDC and export them to the job environment. Requires id-token: write in the calling job.'
 
 inputs:
-  identityId:
+  identity:
     description: 'Infisical machine identity UUID with OIDC trust for this repo'
     required: true
-  oidcAudience:
+  audience:
     description: 'OIDC audience claim (must match the identity configuration)'
     required: false
     default: 'https://github.com/gingur'
-  projectSlug:
+  project:
     description: 'Infisical project slug (e.g., gingur-7xjq)'
     required: true
-  envSlug:
+  env:
     description: 'Infisical environment slug (e.g., production)'
     required: true
-  secretPath:
+  path:
     description: 'Infisical secret folder path (e.g., /troyrhinehart)'
     required: true
 
@@ -219,11 +219,11 @@ runs:
       uses: Infisical/secrets-action@v1.0.16
       with:
         method: oidc
-        identity-id: ${{ inputs.identityId }}
-        oidc-audience: ${{ inputs.oidcAudience }}
-        project-slug: ${{ inputs.projectSlug }}
-        env-slug: ${{ inputs.envSlug }}
-        secret-path: ${{ inputs.secretPath }}
+        identity-id: ${{ inputs.identity }}
+        oidc-audience: ${{ inputs.audience }}
+        project-slug: ${{ inputs.project }}
+        env-slug: ${{ inputs.env }}
+        secret-path: ${{ inputs.path }}
         export-type: env
 ```
 
@@ -258,37 +258,37 @@ name: Verify
 on:
   workflow_call:
     inputs:
-      nodeVersion:
+      node:
         description: 'Node.js version (optional override). Empty means read from .nvmrc.'
         type: string
         required: false
         default: ''
-      pnpmVersion:
+      pnpm:
         description: 'pnpm version (optional override). Empty means read from packageManager field.'
         type: string
         required: false
         default: ''
-      workingDirectory:
+      cwd:
         description: 'Directory containing package.json'
         type: string
         required: false
         default: '.'
-      lintScript:
+      lint:
         description: 'pnpm script to run for lint'
         type: string
         required: false
         default: 'lint'
-      typecheckScript:
+      typecheck:
         description: 'pnpm script to run for typecheck'
         type: string
         required: false
         default: 'typecheck'
-      testScript:
+      test:
         description: 'pnpm script to run for tests'
         type: string
         required: false
         default: 'test'
-      runsOn:
+      runner:
         description: 'Runner label'
         type: string
         required: false
@@ -299,26 +299,26 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ${{ inputs.runsOn }}
+    runs-on: ${{ inputs.runner }}
     defaults:
       run:
-        working-directory: ${{ inputs.workingDirectory }}
+        working-directory: ${{ inputs.cwd }}
     steps:
       - uses: actions/checkout@v6
 
       - uses: gingur/devkit/actions/node.setup@main
         with:
-          nodeVersion: ${{ inputs.nodeVersion }}
-          pnpmVersion: ${{ inputs.pnpmVersion }}
+          node: ${{ inputs.node }}
+          pnpm: ${{ inputs.pnpm }}
 
       - name: Lint
-        run: pnpm ${{ inputs.lintScript }}
+        run: pnpm ${{ inputs.lint }}
 
       - name: Typecheck
-        run: pnpm ${{ inputs.typecheckScript }}
+        run: pnpm ${{ inputs.typecheck }}
 
       - name: Test
-        run: pnpm ${{ inputs.testScript }}
+        run: pnpm ${{ inputs.test }}
 ```
 
 - [ ] **Step 3: Validate YAML**
@@ -352,47 +352,47 @@ name: Deploy Cloudflare Worker
 on:
   workflow_call:
     inputs:
-      nodeVersion:
+      node:
         description: 'Node.js version (optional override). Empty means read from .nvmrc.'
         type: string
         required: false
         default: ''
-      pnpmVersion:
+      pnpm:
         description: 'pnpm version (optional override). Empty means read from packageManager field.'
         type: string
         required: false
         default: ''
-      buildCommand:
+      build:
         description: 'Build command to run before deploy'
         type: string
         required: false
         default: 'pnpm build'
-      workingDirectory:
+      cwd:
         description: 'Directory containing package.json + wrangler.toml'
         type: string
         required: false
         default: '.'
-      environment:
+      env:
         description: 'Deployment target: production | preview. Validated by case guard; sets the GitHub Environment for this job.'
         type: string
         required: true
-      infisicalProjectSlug:
+      infisicalProject:
         description: 'Infisical project slug (e.g., gingur-7xjq)'
         type: string
         required: true
-      infisicalEnvSlug:
+      infisicalEnv:
         description: 'Infisical environment slug (e.g., production)'
         type: string
         required: true
-      infisicalSecretPath:
+      infisicalPath:
         description: 'Infisical secret folder path (e.g., /troyrhinehart)'
         type: string
         required: true
-      infisicalIdentityId:
+      infisicalIdentity:
         description: 'Infisical machine identity UUID with OIDC trust for this repo'
         type: string
         required: true
-      infisicalOidcAudience:
+      infisicalAudience:
         description: 'OIDC audience claim (must match the identity configuration)'
         type: string
         required: false
@@ -405,15 +405,15 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    environment: ${{ inputs.env }}
     steps:
       - name: Validate environment input
         shell: bash
         run: |
-          case "${{ inputs.environment }}" in
+          case "${{ inputs.env }}" in
             production|preview) ;;
             *)
-              echo "::error::environment must be one of: production, preview (got: '${{ inputs.environment }}')"
+              echo "::error::environment must be one of: production, preview (got: '${{ inputs.env }}')"
               exit 1
               ;;
           esac
@@ -422,36 +422,36 @@ jobs:
 
       - uses: gingur/devkit/actions/node.setup@main
         with:
-          nodeVersion: ${{ inputs.nodeVersion }}
-          pnpmVersion: ${{ inputs.pnpmVersion }}
+          node: ${{ inputs.node }}
+          pnpm: ${{ inputs.pnpm }}
 
       - name: Install dependencies
-        working-directory: ${{ inputs.workingDirectory }}
+        working-directory: ${{ inputs.cwd }}
         shell: bash
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        working-directory: ${{ inputs.workingDirectory }}
+        working-directory: ${{ inputs.cwd }}
         shell: bash
-        run: ${{ inputs.buildCommand }}
+        run: ${{ inputs.build }}
 
       # CF_API_TOKEN / CF_ACCOUNT_ID live only in Infisical (single source of truth).
       # To rotate them, see the "Secret rotation" runbook in the README.
       - name: Fetch CF credentials
         uses: gingur/devkit/actions/infisical.secrets.fetch@main
         with:
-          identityId: ${{ inputs.infisicalIdentityId }}
-          oidcAudience: ${{ inputs.infisicalOidcAudience }}
-          projectSlug: ${{ inputs.infisicalProjectSlug }}
-          envSlug: ${{ inputs.infisicalEnvSlug }}
-          secretPath: ${{ inputs.infisicalSecretPath }}
+          identity: ${{ inputs.infisicalIdentity }}
+          audience: ${{ inputs.infisicalAudience }}
+          project: ${{ inputs.infisicalProject }}
+          env: ${{ inputs.infisicalEnv }}
+          path: ${{ inputs.infisicalPath }}
 
       - name: Deploy
         uses: gingur/devkit/actions/cf.worker.deploy@main
         with:
-          workingDirectory: ${{ inputs.workingDirectory }}
-          apiToken: ${{ env.CF_API_TOKEN }}
-          accountId: ${{ env.CF_ACCOUNT_ID }}
+          cwd: ${{ inputs.cwd }}
+          token: ${{ env.CF_API_TOKEN }}
+          account: ${{ env.CF_ACCOUNT_ID }}
 ```
 
 - [ ] **Step 3: Validate YAML**
@@ -593,11 +593,11 @@ jobs:
   deploy:
     uses: gingur/devkit/.github/workflows/cf.worker.deploy.yml@main
     with:
-      environment: production
-      infisicalProjectSlug: gingur-7xjq
-      infisicalEnvSlug: production
-      infisicalSecretPath: /troyrhinehart
-      infisicalIdentityId: f87b7cde-3016-4e85-84b5-0d077e8833e0
+      env: production
+      infisicalProject: gingur-7xjq
+      infisicalEnv: production
+      infisicalPath: /troyrhinehart
+      infisicalIdentity: f87b7cde-3016-4e85-84b5-0d077e8833e0
 ```
 
 - [ ] **Step 3: Validate YAML**
@@ -623,7 +623,7 @@ git -C ../troyrhinehart commit -m "Adopt devkit node.verify / cf.worker.deploy (
 **Files:**
 - Modify: `actions/cf.worker.deploy/action.yml`
 
-- [ ] **Step 1: Add the `workerName` input and fold `--name` into the command**
+- [ ] **Step 1: Add the `worker` input and fold `--name` into the command**
 
 Replace the `inputs:` `command:` block tail and the `command:` passthrough. Final file:
 
@@ -632,21 +632,21 @@ name: 'Deploy Cloudflare Worker'
 description: 'Run wrangler against a pre-built directory via cloudflare/wrangler-action. Cloudflare credentials are passed as inputs (it takes them via inputs, not environment variables).'
 
 inputs:
-  apiToken:
+  token:
     description: 'Cloudflare API token'
     required: true
-  accountId:
+  account:
     description: 'Cloudflare account ID'
     required: true
-  workingDirectory:
+  cwd:
     description: 'Directory containing wrangler.toml'
     required: false
     default: '.'
-  environment:
+  env:
     description: 'wrangler --env value. Empty means run without --env.'
     required: false
     default: ''
-  workerName:
+  worker:
     description: 'Override the deployed script name (wrangler --name). Empty means use the name from config.'
     required: false
     default: ''
@@ -661,11 +661,11 @@ runs:
     - name: Deploy
       uses: cloudflare/wrangler-action@v4
       with:
-        apiToken: ${{ inputs.apiToken }}
-        accountId: ${{ inputs.accountId }}
-        workingDirectory: ${{ inputs.workingDirectory }}
-        environment: ${{ inputs.environment }}
-        command: ${{ inputs.workerName == '' && inputs.command || format('{0} --name {1}', inputs.command, inputs.workerName) }}
+        apiToken: ${{ inputs.token }}
+        accountId: ${{ inputs.account }}
+        workingDirectory: ${{ inputs.cwd }}
+        environment: ${{ inputs.env }}
+        command: ${{ inputs.worker == '' && inputs.command || format('{0} --name {1}', inputs.command, inputs.worker) }}
 ```
 
 - [ ] **Step 2: Validate YAML**
@@ -673,7 +673,7 @@ runs:
 Run: `python3 -c "import yaml; yaml.safe_load(open('actions/cf.worker.deploy/action.yml'))" && echo OK`
 Expected: `OK`
 
-- [ ] **Step 3: Verify `--name` composition with `wrangler --dry-run`** (the linchpin)
+- [ ] **Step 3: Verify `--name` composition with `wrangler --dry-run`** (the linchpin — uses `worker` input)
 
 In `$CLAUDE_JOB_DIR/tmp/wrtest`, create a minimal worker with `[env.preview]` and confirm `wrangler deploy --env preview --name <x> --dry-run` is accepted (exit 0):
 ```bash
@@ -694,29 +694,29 @@ git commit -m "cf.worker.deploy: add workerName input (wrangler --name override)
 ### Task 10: Forward `--env` in `cf.worker.deploy.yml` (breaking change)
 
 **Files:**
-- Modify: `.github/workflows/cf.worker.deploy.yml` (the final `Deploy` step + add `workerName` input)
+- Modify: `.github/workflows/cf.worker.deploy.yml` (the final `Deploy` step + add `worker` input)
 
-- [ ] **Step 1: Add a `workerName` workflow input** (after `workingDirectory`, before `environment`):
+- [ ] **Step 1: Add a `worker` workflow input** (after `cwd`, before `env`):
 
 ```yaml
-      workerName:
+      worker:
         description: 'Override the deployed worker name (wrangler --name). Empty uses the config name.'
         type: string
         required: false
         default: ''
 ```
 
-- [ ] **Step 2: Update the `Deploy` step** to forward `environment` and `workerName`:
+- [ ] **Step 2: Update the `Deploy` step** to forward `env` and `worker`:
 
 ```yaml
       - name: Deploy
         uses: gingur/devkit/actions/cf.worker.deploy@main
         with:
-          workingDirectory: ${{ inputs.workingDirectory }}
-          environment: ${{ inputs.environment }}
-          workerName: ${{ inputs.workerName }}
-          apiToken: ${{ env.CF_API_TOKEN }}
-          accountId: ${{ env.CF_ACCOUNT_ID }}
+          cwd: ${{ inputs.cwd }}
+          env: ${{ inputs.env }}
+          worker: ${{ inputs.worker }}
+          token: ${{ env.CF_API_TOKEN }}
+          account: ${{ env.CF_ACCOUNT_ID }}
 ```
 
 - [ ] **Step 3: Validate YAML**
@@ -746,13 +746,13 @@ inputs:
   mode:
     description: 'attach | detach'
     required: true
-  apiToken:
+  token:
     description: 'Cloudflare API token (needs Workers Routes + DNS edit)'
     required: true
-  accountId:
+  account:
     description: 'Cloudflare account ID'
     required: true
-  zoneId:
+  zone:
     description: 'Cloudflare zone ID for the domain'
     required: true
   hostname:
@@ -769,9 +769,9 @@ runs:
     - name: Manage custom domain
       shell: bash
       env:
-        CF_API_TOKEN: ${{ inputs.apiToken }}
-        ACCOUNT_ID: ${{ inputs.accountId }}
-        ZONE_ID: ${{ inputs.zoneId }}
+        CF_API_TOKEN: ${{ inputs.token }}
+        ACCOUNT_ID: ${{ inputs.account }}
+        ZONE_ID: ${{ inputs.zone }}
         HOSTNAME: ${{ inputs.hostname }}
         SERVICE: ${{ inputs.service }}
         MODE: ${{ inputs.mode }}
@@ -844,47 +844,47 @@ name: Preview Cloudflare Worker
 on:
   workflow_call:
     inputs:
-      appName:
-        description: 'Base worker name; the preview worker is <appName>-pr-<N>'
+      app:
+        description: 'Base worker name; the preview worker is <app>-pr-<N>'
         type: string
         required: true
-      previewDomain:
-        description: 'Base domain for previews; the URL is pr-<N>.<previewDomain>'
+      domain:
+        description: 'Base domain for previews; the URL is pr-<N>.<domain>'
         type: string
         required: true
-      cfZoneId:
-        description: 'Cloudflare zone ID for previewDomain'
+      cfZone:
+        description: 'Cloudflare zone ID for domain'
         type: string
         required: true
-      workingDirectory:
+      cwd:
         type: string
         required: false
         default: '.'
-      buildCommand:
+      build:
         type: string
         required: false
         default: 'pnpm build'
-      nodeVersion:
+      node:
         type: string
         required: false
         default: ''
-      pnpmVersion:
+      pnpm:
         type: string
         required: false
         default: ''
-      infisicalProjectSlug:
+      infisicalProject:
         type: string
         required: true
-      infisicalEnvSlug:
+      infisicalEnv:
         type: string
         required: true
-      infisicalSecretPath:
+      infisicalPath:
         type: string
         required: true
-      infisicalIdentityId:
+      infisicalIdentity:
         type: string
         required: true
-      infisicalOidcAudience:
+      infisicalAudience:
         type: string
         required: false
         default: 'https://github.com/gingur'
@@ -898,17 +898,17 @@ jobs:
   deploy:
     uses: ./.github/workflows/cf.worker.deploy.yml
     with:
-      environment: preview
-      workerName: ${{ inputs.appName }}-pr-${{ github.event.pull_request.number }}
-      workingDirectory: ${{ inputs.workingDirectory }}
-      buildCommand: ${{ inputs.buildCommand }}
-      nodeVersion: ${{ inputs.nodeVersion }}
-      pnpmVersion: ${{ inputs.pnpmVersion }}
-      infisicalProjectSlug: ${{ inputs.infisicalProjectSlug }}
-      infisicalEnvSlug: ${{ inputs.infisicalEnvSlug }}
-      infisicalSecretPath: ${{ inputs.infisicalSecretPath }}
-      infisicalIdentityId: ${{ inputs.infisicalIdentityId }}
-      infisicalOidcAudience: ${{ inputs.infisicalOidcAudience }}
+      env: preview
+      worker: ${{ inputs.app }}-pr-${{ github.event.pull_request.number }}
+      cwd: ${{ inputs.cwd }}
+      build: ${{ inputs.build }}
+      node: ${{ inputs.node }}
+      pnpm: ${{ inputs.pnpm }}
+      infisicalProject: ${{ inputs.infisicalProject }}
+      infisicalEnv: ${{ inputs.infisicalEnv }}
+      infisicalPath: ${{ inputs.infisicalPath }}
+      infisicalIdentity: ${{ inputs.infisicalIdentity }}
+      infisicalAudience: ${{ inputs.infisicalAudience }}
     secrets: inherit
 
   domain:
@@ -919,25 +919,25 @@ jobs:
       id-token: write
       pull-requests: write
     env:
-      WORKER_NAME: ${{ inputs.appName }}-pr-${{ github.event.pull_request.number }}
-      HOSTNAME: pr-${{ github.event.pull_request.number }}.${{ inputs.previewDomain }}
+      WORKER_NAME: ${{ inputs.app }}-pr-${{ github.event.pull_request.number }}
+      HOSTNAME: pr-${{ github.event.pull_request.number }}.${{ inputs.domain }}
     steps:
       - name: Fetch CF credentials
         uses: gingur/devkit/actions/infisical.secrets.fetch@main
         with:
-          identityId: ${{ inputs.infisicalIdentityId }}
-          oidcAudience: ${{ inputs.infisicalOidcAudience }}
-          projectSlug: ${{ inputs.infisicalProjectSlug }}
-          envSlug: ${{ inputs.infisicalEnvSlug }}
-          secretPath: ${{ inputs.infisicalSecretPath }}
+          identity: ${{ inputs.infisicalIdentity }}
+          audience: ${{ inputs.infisicalAudience }}
+          project: ${{ inputs.infisicalProject }}
+          env: ${{ inputs.infisicalEnv }}
+          path: ${{ inputs.infisicalPath }}
 
       - name: Attach custom domain
         uses: gingur/devkit/actions/cf.worker.domain@main
         with:
           mode: attach
-          apiToken: ${{ env.CF_API_TOKEN }}
-          accountId: ${{ env.CF_ACCOUNT_ID }}
-          zoneId: ${{ inputs.cfZoneId }}
+          token: ${{ env.CF_API_TOKEN }}
+          account: ${{ env.CF_ACCOUNT_ID }}
+          zone: ${{ inputs.cfZone }}
           hostname: ${{ env.HOSTNAME }}
           service: ${{ env.WORKER_NAME }}
 
@@ -976,32 +976,32 @@ name: Cleanup Cloudflare Worker preview
 on:
   workflow_call:
     inputs:
-      appName:
+      app:
         type: string
         required: true
-      previewDomain:
+      domain:
         type: string
         required: true
-      cfZoneId:
+      cfZone:
         type: string
         required: true
-      workingDirectory:
+      cwd:
         type: string
         required: false
         default: '.'
-      infisicalProjectSlug:
+      infisicalProject:
         type: string
         required: true
-      infisicalEnvSlug:
+      infisicalEnv:
         type: string
         required: true
-      infisicalSecretPath:
+      infisicalPath:
         type: string
         required: true
-      infisicalIdentityId:
+      infisicalIdentity:
         type: string
         required: true
-      infisicalOidcAudience:
+      infisicalAudience:
         type: string
         required: false
         default: 'https://github.com/gingur'
@@ -1015,37 +1015,37 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     env:
-      WORKER_NAME: ${{ inputs.appName }}-pr-${{ github.event.pull_request.number }}
-      HOSTNAME: pr-${{ github.event.pull_request.number }}.${{ inputs.previewDomain }}
+      WORKER_NAME: ${{ inputs.app }}-pr-${{ github.event.pull_request.number }}
+      HOSTNAME: pr-${{ github.event.pull_request.number }}.${{ inputs.domain }}
     steps:
       - uses: actions/checkout@v6
 
       - name: Fetch CF credentials
         uses: gingur/devkit/actions/infisical.secrets.fetch@main
         with:
-          identityId: ${{ inputs.infisicalIdentityId }}
-          oidcAudience: ${{ inputs.infisicalOidcAudience }}
-          projectSlug: ${{ inputs.infisicalProjectSlug }}
-          envSlug: ${{ inputs.infisicalEnvSlug }}
-          secretPath: ${{ inputs.infisicalSecretPath }}
+          identity: ${{ inputs.infisicalIdentity }}
+          audience: ${{ inputs.infisicalAudience }}
+          project: ${{ inputs.infisicalProject }}
+          env: ${{ inputs.infisicalEnv }}
+          path: ${{ inputs.infisicalPath }}
 
       - name: Detach custom domain
         uses: gingur/devkit/actions/cf.worker.domain@main
         with:
           mode: detach
-          apiToken: ${{ env.CF_API_TOKEN }}
-          accountId: ${{ env.CF_ACCOUNT_ID }}
-          zoneId: ${{ inputs.cfZoneId }}
+          token: ${{ env.CF_API_TOKEN }}
+          account: ${{ env.CF_ACCOUNT_ID }}
+          zone: ${{ inputs.cfZone }}
           hostname: ${{ env.HOSTNAME }}
 
       - name: Delete preview worker
         uses: gingur/devkit/actions/cf.worker.deploy@main
         with:
-          workingDirectory: ${{ inputs.workingDirectory }}
-          apiToken: ${{ env.CF_API_TOKEN }}
-          accountId: ${{ env.CF_ACCOUNT_ID }}
+          cwd: ${{ inputs.cwd }}
+          token: ${{ env.CF_API_TOKEN }}
+          account: ${{ env.CF_ACCOUNT_ID }}
           command: delete
-          workerName: ${{ env.WORKER_NAME }}
+          worker: ${{ env.WORKER_NAME }}
 
       - name: Remove preview comment
         uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
@@ -1096,13 +1096,13 @@ jobs:
   preview:
     uses: gingur/devkit/.github/workflows/cf.worker.preview.yml@main
     with:
-      appName: troyrhinehart
-      previewDomain: troyrhinehart.com
-      cfZoneId: <zoneId>
-      infisicalProjectSlug: gingur-7xjq
-      infisicalEnvSlug: production
-      infisicalSecretPath: /troyrhinehart
-      infisicalIdentityId: <identityId>
+      app: troyrhinehart
+      domain: troyrhinehart.com
+      cfZone: <zoneId>
+      infisicalProject: gingur-7xjq
+      infisicalEnv: production
+      infisicalPath: /troyrhinehart
+      infisicalIdentity: <identityId>
     secrets: inherit
 ​```
 
@@ -1120,13 +1120,13 @@ jobs:
   cleanup:
     uses: gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main
     with:
-      appName: troyrhinehart
-      previewDomain: troyrhinehart.com
-      cfZoneId: <zoneId>
-      infisicalProjectSlug: gingur-7xjq
-      infisicalEnvSlug: production
-      infisicalSecretPath: /troyrhinehart
-      infisicalIdentityId: <identityId>
+      app: troyrhinehart
+      domain: troyrhinehart.com
+      cfZone: <zoneId>
+      infisicalProject: gingur-7xjq
+      infisicalEnv: production
+      infisicalPath: /troyrhinehart
+      infisicalIdentity: <identityId>
     secrets: inherit
 ​```
 
@@ -1195,13 +1195,13 @@ jobs:
   preview:
     uses: gingur/devkit/.github/workflows/cf.worker.preview.yml@main
     with:
-      appName: troyrhinehart
-      previewDomain: troyrhinehart.com
-      cfZoneId: <zoneId>
-      infisicalProjectSlug: gingur-7xjq
-      infisicalEnvSlug: production
-      infisicalSecretPath: /troyrhinehart
-      infisicalIdentityId: f87b7cde-3016-4e85-84b5-0d077e8833e0
+      app: troyrhinehart
+      domain: troyrhinehart.com
+      cfZone: <zoneId>
+      infisicalProject: gingur-7xjq
+      infisicalEnv: production
+      infisicalPath: /troyrhinehart
+      infisicalIdentity: f87b7cde-3016-4e85-84b5-0d077e8833e0
     secrets: inherit
 ```
 
@@ -1220,13 +1220,13 @@ jobs:
   cleanup:
     uses: gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main
     with:
-      appName: troyrhinehart
-      previewDomain: troyrhinehart.com
-      cfZoneId: <zoneId>
-      infisicalProjectSlug: gingur-7xjq
-      infisicalEnvSlug: production
-      infisicalSecretPath: /troyrhinehart
-      infisicalIdentityId: f87b7cde-3016-4e85-84b5-0d077e8833e0
+      app: troyrhinehart
+      domain: troyrhinehart.com
+      cfZone: <zoneId>
+      infisicalProject: gingur-7xjq
+      infisicalEnv: production
+      infisicalPath: /troyrhinehart
+      infisicalIdentity: f87b7cde-3016-4e85-84b5-0d077e8833e0
     secrets: inherit
 ```
 
@@ -1256,6 +1256,6 @@ git -C ../troyrhinehart commit -m "Add per-PR preview + cleanup; migrate wrangle
 ## Self-review
 
 - **Spec coverage:** env model (T10 `--env` forward), per-PR worker (T9 `workerName` + T12 `workerName: <app>-pr-<N>`), masking (T11 `cf.worker.domain` + T12 attach), hostname shape (T12 `pr-<N>.<previewDomain>`), sticky comment (T12 marocchino), cleanup (T13), infisical extraction (T3, used T5/T12/T13), naming + pins (T1–T6), breaking change + migration (T8, T15), risks/verification (T7, T9-S3, T16), README + token scope (T14). All spec sections map to a task.
-- **Type/name consistency:** input names match across producer/consumer — `workerName`, `appName`, `previewDomain`, `cfZoneId`, `infisical*` identical in `cf.worker.deploy.yml` ↔ `cf.worker.preview.yml` ↔ recipes; composite inputs (`apiToken`, `accountId`, `zoneId`, `hostname`, `service`, `mode`) match call sites; the marocchino `header: cf-preview` matches between attach-comment (T12) and delete-comment (T13).
+- **Type/name consistency:** input names match across producer/consumer — `worker`, `app`, `domain`, `cfZone`, `infisical*` identical in `cf.worker.deploy.yml` ↔ `cf.worker.preview.yml` ↔ recipes; composite inputs (`token`, `account`, `zone`, `hostname`, `service`, `mode`) match call sites; the marocchino `header: cf-preview` matches between attach-comment (T12) and delete-comment (T13).
 - **Pinning:** every third-party `uses:` is a version tag except `marocchino@0ea0beb…` (SHA). `cf.worker.domain` uses `curl` (no action to pin).
 - **Placeholders:** the only `<...>` tokens are genuine consumer-supplied values (`<zoneId>`, `<identityId>`) — provided where known (identity UUID) and flagged where the user must fetch (zone id, Task 15 Step 2).

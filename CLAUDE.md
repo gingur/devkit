@@ -14,7 +14,7 @@ A 3-tier identifier system. Pick the tier by *what kind of thing* you're naming.
 | Tier | Convention | Examples |
 |---|---|---|
 | **File names** (workflows, action dirs) | `lowercase.dot.notation` | `cf.worker.preview.yml`, `node.verify.yml`, `actions/infisical.secrets.fetch/` |
-| **Identifiers** (inputs, job ids, step ids, outputs) | `camelCase`, single word when possible | `deploy`, `workerName`, `previewDomain`, `cfZoneId` |
+| **Identifiers** (inputs, job ids, step ids, outputs) | `camelCase`, single word when possible | `deploy`, `worker`, `domain`, `cfZone` |
 | **Env vars & secrets** | `SCREAMING_SNAKE_CASE` | `CF_API_TOKEN`, `CF_ACCOUNT_ID` |
 
 ### File names: `<provider>.<service>.<action>`
@@ -41,8 +41,8 @@ A 3-tier identifier system. Pick the tier by *what kind of thing* you're naming.
 - **No kebab-case.** No `snake_case` for identifiers (that's reserved for env/secrets).
 - **Provider-prefix an input only when its surface spans multiple providers** —
   e.g. a workflow taking both Infisical and Cloudflare inputs uses
-  `infisicalProjectSlug` + `cfZoneId`. Within a single-provider action the prefix
-  is noise: a Cloudflare-only composite just uses `apiToken`, `accountId`.
+  `infisicalProject` + `cfZone`. Within a single-provider action the prefix
+  is noise: a Cloudflare-only composite just uses `token`, `account`.
 
 ### Env vars & secrets: SCREAMING_SNAKE_CASE
 
@@ -149,8 +149,8 @@ name = "<app>-preview"   # placeholder; overridden per-PR by --name, no custom r
 
 - Each PR gets an immutable masked URL `https://pr-<N>.<previewDomain>`; content
   updates on each push; the worker + custom domain are deleted on PR close.
-- The `infisicalEnvSlug` for previews points at wherever the CF token lives (often
-  `production`) — it is independent of the `environment: preview` that drives
+- The `infisicalEnv` for previews points at wherever the CF token lives (often
+  `production`) — it is independent of the `env: preview` that drives
   `wrangler --env`.
 - Previews run only for **same-repo (branch) PRs**: fork PRs get no OIDC/secrets by
   design, so they don't deploy with our credentials.

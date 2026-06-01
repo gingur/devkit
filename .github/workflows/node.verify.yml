@@ -3,37 +3,37 @@ name: Verify
 on:
   workflow_call:
     inputs:
-      nodeVersion:
+      node:
         description: 'Node.js version (optional override). Empty means read from .nvmrc.'
         type: string
         required: false
         default: ''
-      pnpmVersion:
+      pnpm:
         description: 'pnpm version (optional override). Empty means read from packageManager field.'
         type: string
         required: false
         default: ''
-      workingDirectory:
+      cwd:
         description: 'Directory containing package.json'
         type: string
         required: false
         default: '.'
-      lintScript:
+      lint:
         description: 'pnpm script to run for lint'
         type: string
         required: false
         default: 'lint'
-      typecheckScript:
+      typecheck:
         description: 'pnpm script to run for typecheck'
         type: string
         required: false
         default: 'typecheck'
-      testScript:
+      test:
         description: 'pnpm script to run for tests'
         type: string
         required: false
         default: 'test'
-      runsOn:
+      runner:
         description: 'Runner label'
         type: string
         required: false
@@ -44,23 +44,23 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ${{ inputs.runsOn }}
+    runs-on: ${{ inputs.runner }}
     defaults:
       run:
-        working-directory: ${{ inputs.workingDirectory }}
+        working-directory: ${{ inputs.cwd }}
     steps:
       - uses: actions/checkout@v6
 
       - uses: gingur/devkit/actions/node.setup@main
         with:
-          nodeVersion: ${{ inputs.nodeVersion }}
-          pnpmVersion: ${{ inputs.pnpmVersion }}
+          node: ${{ inputs.node }}
+          pnpm: ${{ inputs.pnpm }}
 
       - name: Lint
-        run: pnpm ${{ inputs.lintScript }}
+        run: pnpm ${{ inputs.lint }}
 
       - name: Typecheck
-        run: pnpm ${{ inputs.typecheckScript }}
+        run: pnpm ${{ inputs.typecheck }}
 
       - name: Test
-        run: pnpm ${{ inputs.testScript }}
+        run: pnpm ${{ inputs.test }}

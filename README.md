@@ -157,7 +157,7 @@ jobs:
       infisicalProject: <project-slug>
       infisicalEnv: <env-slug>     # where the CF token lives (often "production")
       infisicalPath: /<app>
-      infisicalIdentity: <identity-uuid>
+      infisicalIdentity: <preview-identity-uuid>   # see note below — NOT the production identity
     secrets: inherit
 ```
 
@@ -181,10 +181,20 @@ jobs:
       infisicalProject: <project-slug>
       infisicalEnv: <env-slug>
       infisicalPath: /<app>
-      infisicalIdentity: <identity-uuid>
+      infisicalIdentity: <preview-identity-uuid>   # see note below — NOT the production identity
     secrets: inherit
 ```
 
 > The preview worker is named `<app>-pr-<N>` and the URL `pr-<N>.<domain>` is attached
 > as a Workers custom domain — so `<domain>` must be a Cloudflare zone on the same account.
 > The token needs DNS (Edit) on that zone (see [Secret rotation](#secret-rotation)).
+
+> **Use a preview-scoped Infisical identity.** Every preview job (deploy, domain,
+> cleanup) runs under the GitHub `preview` environment, so it authenticates with the
+> OIDC subject `repo:<owner>/<repo>:environment:preview` — **not** the
+> `…:environment:production` subject your deploy uses. Create a second machine
+> identity (e.g. `gh-<app>-preview`) whose OIDC trust is bound to that preview
+> subject and grant it the same secret path, then pass its UUID as `infisicalIdentity`
+> above. Reusing the production identity makes the credential fetch fail with
+> `403 Access denied: OIDC subject not allowed`. This keeps the production identity's
+> trust narrow (least privilege) rather than broadening it to accept PR contexts.

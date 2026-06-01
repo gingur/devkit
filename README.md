@@ -9,7 +9,7 @@ Shared GitHub Actions and reusable workflows for [@gingur](https://github.com/gi
 actions/             composite actions   — uses: gingur/devkit/actions/<name>@main
 ```
 
-> Reusable workflows must live directly in `.github/workflows/` (GitHub requirement — no subdirs), so names group by **dot-notation** instead: `<provider>.<service>.<action>.yml` (e.g. `cf.worker.deploy.yml`, `node.verify.yml`). See [`CLAUDE.md`](./CLAUDE.md) for the naming standard.
+> Reusable workflows must live directly in `.github/workflows/` (GitHub requirement — no subdirs), so names group by **dot-notation** instead: `<provider>.<service>.<action…>.yml` — an extensible dotted path, not capped at three segments (`node.verify.yml`, `cf.worker.deploy.yml`, `cf.worker.preview.cleanup.yml`). See [`CLAUDE.md`](./CLAUDE.md) for the naming standard.
 
 ## Using from another repo
 

@@ -21,7 +21,11 @@ A 3-tier identifier system. Pick the tier by *what kind of thing* you're naming.
 | **Identifiers** (inputs, job ids, step ids, outputs) | `camelCase`, single word when possible | `deploy`, `worker`, `domain`, `cfZone` |
 | **Env vars & secrets** | `SCREAMING_SNAKE_CASE` | `CF_API_TOKEN`, `CF_ACCOUNT_ID` |
 
-### File names: `<provider>.<service>.<action>`
+### File names: `<provider>.<service>.<action…>`
+
+A **dotted path**, broad → specific — **not capped at three segments**. `<service>`
+drops when the provider has one surface (2 segments: `node.verify`), and `<action…>`
+takes extra dots for compound lifecycles (4+: `cf.worker.preview.cleanup`).
 
 - **provider** — the tool/platform namespace, **abbreviated** where a common short
   form exists: `cf` (Cloudflare); `infisical`; concrete runtimes `node` / `bun`.

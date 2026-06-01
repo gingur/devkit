@@ -54,7 +54,19 @@ permissions:
   pull-requests: write
 
 jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a pull_request event
+        shell: bash
+        run: |
+          if [ -z "${{ github.event.pull_request.number }}" ]; then
+            echo "::error::cf.worker.preview must be called on a pull_request event (no PR number available)."
+            exit 1
+          fi
+
   deploy:
+    needs: guard
     uses: ./.github/workflows/cf.worker.deploy.yml
     with:
       env: preview

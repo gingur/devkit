@@ -45,6 +45,14 @@ jobs:
       WORKER: ${{ inputs.app }}-pr-${{ github.event.pull_request.number }}
       HOST: pr-${{ github.event.pull_request.number }}.${{ inputs.domain }}
     steps:
+      - name: Require a pull_request event
+        shell: bash
+        run: |
+          if [ -z "${{ github.event.pull_request.number }}" ]; then
+            echo "::error::cf.worker.preview.cleanup must be called on a pull_request event (no PR number available)."
+            exit 1
+          fi
+
       - uses: actions/checkout@v6
 
       - name: Fetch CF credentials
@@ -65,6 +73,8 @@ jobs:
           zone: ${{ inputs.cfZone }}
           hostname: ${{ env.HOST }}
 
+      # No `env:` here on purpose: delete targets the worker by name across all
+      # environments, so we run `wrangler delete --name <worker>` with no --env.
       - name: Delete preview worker
         uses: gingur/devkit/actions/cf.worker.deploy@main
         with:

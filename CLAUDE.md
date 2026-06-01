@@ -1,0 +1,153 @@
+# devkit — standards
+
+Authoritative conventions for **devkit** (shared GitHub Actions, reusable
+workflows, configs) and for the **consumer repos** that call them. Future agent
+sessions and human contributors follow these. Human-facing usage docs live in
+[`README.md`](./README.md); this file is the standards reference.
+
+---
+
+## Naming
+
+A 3-tier identifier system. Pick the tier by *what kind of thing* you're naming.
+
+| Tier | Convention | Examples |
+|---|---|---|
+| **File names** (workflows, action dirs) | `lowercase.dot.notation` | `cf.worker.preview.yml`, `node.verify.yml`, `actions/infisical.secrets.fetch/` |
+| **Identifiers** (inputs, job ids, step ids, outputs) | `camelCase`, single word when possible | `deploy`, `workerName`, `previewDomain`, `cfZoneId` |
+| **Env vars & secrets** | `SCREAMING_SNAKE_CASE` | `CF_API_TOKEN`, `CF_ACCOUNT_ID` |
+
+### File names: `<provider>.<service>.<action>`
+
+- **provider** — the tool/platform namespace, **abbreviated** where a common short
+  form exists: `cf` (Cloudflare); `infisical`; concrete runtimes `node` / `bun`.
+  Runtime is the provider axis for language tooling (`node` today, `bun` as a
+  future sibling — kept separate, never abstracted to "runtime").
+- **service** — the resource within the provider (`worker`, `secrets`). **Omit**
+  when the provider has one obvious surface: `node.verify`, `node.setup`.
+- **action** — the operation, named for **intent** not trigger (`deploy`,
+  `preview`, `verify`, `setup`, `fetch`, `domain`). *Not* `ci` (that's a trigger,
+  not an intent — it lints+typechecks+tests, so it's `verify`).
+- **Compound lifecycles extend with more dots, not hyphens**:
+  `cf.worker.preview.cleanup`, never `cf.worker.preview-cleanup`.
+- Applies to reusable workflows (must be flat — GitHub forbids subdirs under
+  `.github/workflows/`) **and** composite action directories, for symmetry. The
+  workflow `cf.worker.deploy.yml` sits over the composite `actions/cf.worker.deploy/`.
+
+### Identifiers: camelCase, concise
+
+- Prefer a **single word** (`deploy`, `verify`, `cleanup`, `secrets`, `attach`).
+  Use camelCase only when one word won't do (`workerName`, `previewDomain`).
+- **No kebab-case.** No `snake_case` for identifiers (that's reserved for env/secrets).
+- **Provider-prefix an input only when its surface spans multiple providers** —
+  e.g. a workflow taking both Infisical and Cloudflare inputs uses
+  `infisicalProjectSlug` + `cfZoneId`. Within a single-provider action the prefix
+  is noise: a Cloudflare-only composite just uses `apiToken`, `accountId`.
+
+### Env vars & secrets: SCREAMING_SNAKE_CASE
+
+- Always. Provider-prefixed (`CF_API_TOKEN`, `CF_ACCOUNT_ID`).
+- Secrets are fetched into the env by `infisical.secrets.fetch` (`export-type: env`)
+  and read as `${{ env.CF_API_TOKEN }}` — never hardcoded, never echoed.
+
+---
+
+## Repo structure
+
+```
+.github/workflows/   reusable workflows — uses: gingur/devkit/.github/workflows/<name>.yml@main
+actions/             composite actions  — uses: gingur/devkit/actions/<name>@main
+configs/             shared tool configs (eslint, prettier, tsconfig, …)
+```
+
+- **Workflows are thin glue** over single-purpose composite actions. Logic that's
+  reused across workflows is extracted to a composite so it lives **once**.
+- **One concern per action.** If a workflow grows conditionals for a second
+  concern, that concern probably wants its own workflow/action.
+
+## Jobs & steps
+
+- **Job id**: camelCase, intent-revealing, single word when possible (`deploy`,
+  `verify`, `domain`, `cleanup`). The human `name:` is Title Case (`Deploy`).
+- **Step id**: camelCase single word (`checkout`, `setup`, `install`, `build`,
+  `secrets`, `attach`, `comment`). Add an `id:` only when a later step references
+  the step's outputs.
+- Multi-job workflows use `needs:` to order; the credential fetch
+  (`infisical.secrets.fetch`) runs per job that needs creds (jobs don't share env).
+
+## Action pinning
+
+Third-party actions (anything not under `gingur/`) are pinned to a full commit SHA
+with a trailing version comment; gingur's own actions/workflows stay `@main`. See
+[README → Action pinning](./README.md#action-pinning) for the rule and the re-pin
+command. **Each pinned SHA lives in exactly one place** — wrap a repeatedly-used
+third-party action in a composite (e.g. `infisical.secrets.fetch` wraps
+`Infisical/secrets-action`) so the pin is bumped once.
+
+## Credentials & OIDC
+
+- Cloudflare credentials live **only in Infisical** and are fetched at run time via
+  GitHub OIDC (`infisical.secrets.fetch`). No per-repo GitHub secrets; rotation is
+  one place (see [README → Secret rotation](./README.md#secret-rotation)).
+- The CF API token's minimum scope: **Workers Scripts (Edit)**, **Account Settings
+  (Read)**, per-zone **Workers Routes (Edit)**, per-zone **DNS (Edit)** (the last is
+  required for custom-domain previews).
+- `id-token: write` permission is required in any job that fetches secrets.
+
+---
+
+## Consumer standards
+
+What a consumer repo (e.g. a site deployed via devkit) must follow.
+
+### Calling reusable workflows
+
+| Goal | Call |
+|---|---|
+| Verify (lint+typecheck+test) on PR | `gingur/devkit/.github/workflows/node.verify.yml@main` |
+| Deploy to production on push | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main` |
+| Per-PR preview deploy | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main` |
+| Tear down preview on PR close | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
+
+Pin to `@main` (the gingur consumer convention).
+
+### Required permissions
+
+- Deploy / preview / cleanup jobs need `contents: read` + `id-token: write` (OIDC).
+- Preview / cleanup additionally need `pull-requests: write` (sticky comment).
+
+### `wrangler.toml`
+
+Use **named environments** — top-level is the shared base; production and preview
+are explicit blocks:
+
+```toml
+[assets]
+directory = "./dist"
+
+[env.production]
+name = "<app>"
+# production routes / custom domain go here
+
+[env.preview]
+name = "<app>-preview"   # placeholder; overridden per-PR by --name, no custom route
+```
+
+> The reusable workflows **always** pass `--env`, so a missing `[env.production]`
+> block would silently rename your production worker to `<app>-production`. Migrate
+> in lockstep when adopting.
+
+### Previews
+
+- Each PR gets an immutable masked URL `https://pr-<N>.<previewDomain>`; content
+  updates on each push; the worker + custom domain are deleted on PR close.
+- The `infisicalEnvSlug` for previews points at wherever the CF token lives (often
+  `production`) — it is independent of the `environment: preview` that drives
+  `wrangler --env`.
+- Previews run only for **same-repo (branch) PRs**: fork PRs get no OIDC/secrets by
+  design, so they don't deploy with our credentials.
+
+### Recipes
+
+Copy-paste preview + cleanup workflow examples live in
+[README → PR previews](./README.md).

@@ -44,6 +44,11 @@ on:
         type: string
         required: true
 
+# Last push wins: a new preview deploy cancels any in-flight one for this PR.
+concurrency:
+  group: cf-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   id-token: write

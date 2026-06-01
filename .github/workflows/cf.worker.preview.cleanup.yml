@@ -12,10 +12,6 @@ on:
       cfZone:
         type: string
         required: true
-      cwd:
-        type: string
-        required: false
-        default: '.'
       infisicalProject:
         type: string
         required: true
@@ -29,6 +25,12 @@ on:
         type: string
         required: true
 
+# Share the per-PR group with cf.worker.preview so closing a PR cancels any
+# in-flight preview deploy before tearing down.
+concurrency:
+  group: cf-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   id-token: write
@@ -41,8 +43,6 @@ jobs:
       WORKER: ${{ inputs.app }}-pr-${{ github.event.pull_request.number }}
       HOST: pr-${{ github.event.pull_request.number }}.${{ inputs.domain }}
     steps:
-      - uses: actions/checkout@v6
-
       - name: Fetch CF credentials
         uses: gingur/devkit/actions/infisical.secrets.fetch@main
         with:
@@ -60,16 +60,12 @@ jobs:
           zone: ${{ inputs.cfZone }}
           hostname: ${{ env.HOST }}
 
-      # No `env:` here on purpose: delete targets the worker by name across all
-      # environments, so we run `wrangler delete --name <worker>` with no --env.
       - name: Delete preview worker
-        uses: gingur/devkit/actions/cf.worker.deploy@main
+        uses: cloudflare/wrangler-action@v4
         with:
-          cwd: ${{ inputs.cwd }}
-          token: ${{ env.CF_API_TOKEN }}
-          account: ${{ env.CF_ACCOUNT_ID }}
-          command: delete
-          worker: ${{ env.WORKER }}
+          apiToken: ${{ env.CF_API_TOKEN }}
+          accountId: ${{ env.CF_ACCOUNT_ID }}
+          command: delete --name ${{ env.WORKER }}
 
       - name: Remove preview comment
         uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4

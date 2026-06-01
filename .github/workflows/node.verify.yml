@@ -1,39 +1,39 @@
-name: Node CI
+name: Verify
 
 on:
   workflow_call:
     inputs:
-      node-version:
+      node:
         description: 'Node.js version (optional override). Empty means read from .nvmrc.'
         type: string
         required: false
         default: ''
-      pnpm-version:
+      pnpm:
         description: 'pnpm version (optional override). Empty means read from packageManager field.'
         type: string
         required: false
         default: ''
-      working-directory:
+      cwd:
         description: 'Directory containing package.json'
         type: string
         required: false
         default: '.'
-      lint-script:
+      lint:
         description: 'pnpm script to run for lint'
         type: string
         required: false
         default: 'lint'
-      typecheck-script:
+      typecheck:
         description: 'pnpm script to run for typecheck'
         type: string
         required: false
         default: 'typecheck'
-      test-script:
+      test:
         description: 'pnpm script to run for tests'
         type: string
         required: false
         default: 'test'
-      runs-on:
+      runner:
         description: 'Runner label'
         type: string
         required: false
@@ -43,24 +43,24 @@ permissions:
   contents: read
 
 jobs:
-  ci:
-    runs-on: ${{ inputs.runs-on }}
+  verify:
+    runs-on: ${{ inputs.runner }}
     defaults:
       run:
-        working-directory: ${{ inputs.working-directory }}
+        working-directory: ${{ inputs.cwd }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@v6
 
-      - uses: gingur/devkit/actions/setup-node-pnpm@main
+      - uses: gingur/devkit/actions/node.setup@main
         with:
-          node-version: ${{ inputs.node-version }}
-          pnpm-version: ${{ inputs.pnpm-version }}
+          node: ${{ inputs.node }}
+          pnpm: ${{ inputs.pnpm }}
 
       - name: Lint
-        run: pnpm ${{ inputs.lint-script }}
+        run: pnpm ${{ inputs.lint }}
 
       - name: Typecheck
-        run: pnpm ${{ inputs.typecheck-script }}
+        run: pnpm ${{ inputs.typecheck }}
 
       - name: Test
-        run: pnpm ${{ inputs.test-script }}
+        run: pnpm ${{ inputs.test }}

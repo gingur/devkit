@@ -17,6 +17,9 @@ actions, plus docs and consumer recipes. Site-specific wiring (a consumer's own
 `wrangler.toml`, their calling workflows) is out of scope except as documented
 recipes.
 
+This work also introduces a repo-wide **naming convention** (see below) and
+renames the existing workflows/actions to match.
+
 ## Goals
 
 - One preview worker **per PR**, no collisions across concurrent PRs.
@@ -32,7 +35,41 @@ recipes.
 - Site-specific config (consumer `wrangler.toml`, consumer workflows) beyond recipes.
 - Preview environments for non-Workers targets.
 - `workers.dev`-hosted previews (explicitly rejected in favour of masked domains).
-- A gateway/proxy architecture (rejected — see Alternatives).
+- A gateway/proxy architecture (rejected — see Decisions).
+- Multi-package-manager support (npm/yarn) — pnpm is the assumed default.
+
+## Naming convention
+
+`<provider>.<service>.<action>`, dot-delimited, lowercase. Applies to **both**
+reusable workflows (flat files — GitHub forbids subdirs under
+`.github/workflows/`) and composite action directories (for symmetry).
+
+- **provider** — the tool/platform namespace, abbreviated where a common short
+  form exists: `cf` (Cloudflare), `infisical`, and concrete runtimes `node` /
+  `bun`. Runtime is the provider axis for language tooling — `node` today, `bun`
+  as a future sibling namespace (kept separate, not abstracted to "runtime").
+- **service** — the resource within the provider (`worker`, `secrets`). Omitted
+  when the provider has a single obvious surface (e.g. `node.ci`, `node.setup`).
+- **action** — the operation (`deploy`, `preview`, `setup`, `ci`, `fetch`,
+  `domain`). Compound lifecycles extend with **more dots, not hyphens**:
+  `cf.worker.preview.cleanup`.
+- Package manager is **not** encoded in names (pnpm is the default; YAGNI on npm/yarn).
+
+### Rename map
+
+| Kind | Old | New |
+|---|---|---|
+| workflow | `ci-node.yml` | `node.ci.yml` |
+| workflow | `deploy-cf-worker.yml` | `cf.worker.deploy.yml` |
+| workflow | *(new)* | `cf.worker.preview.yml` |
+| workflow | *(new)* | `cf.worker.preview.cleanup.yml` |
+| action | `setup-node-pnpm` | `node.setup` |
+| action | `deploy-cf-worker` | `cf.worker.deploy` |
+| action | *(new)* | `infisical.secrets.fetch` |
+| action | *(new)* | `cf.worker.domain` |
+
+Nice parallel: the reusable workflow `cf.worker.deploy.yml` sits over the
+composite `actions/cf.worker.deploy/`.
 
 ## Decisions (locked)
 
@@ -44,8 +81,8 @@ recipes.
 | Hostname shape | `pr-<N>.<domain>` (one label deep) | Covered by Universal SSL — no Advanced Certificate needed. |
 | URL surfacing | **Sticky PR comment** (adopt `marocchino/sticky-pull-request-comment`) | Marker-based upsert + delete-on-close in one maintained action. |
 | Cleanup | **Auto-delete on PR close** (detach domain, then `wrangler delete`) | Keeps the account tidy; reclaims script-count quota. |
-| Cred fetch | Extract `infisical-secrets` composite (wraps official `Infisical/secrets-action`) | Used in 3 places; centralizes the pinned SHA + OIDC wiring. |
-| Custom-domain API | **Build** a `cf-worker-domain` curl composite | No OSS action exists; wrangler has no CLI for dynamic custom domains. |
+| Cred fetch | Extract `infisical.secrets.fetch` composite (wraps official `Infisical/secrets-action`) | Used in 3 places; centralizes the pinned SHA + OIDC wiring. |
+| Custom-domain API | **Build** a `cf.worker.domain` curl composite | No OSS action exists; wrangler has no CLI for dynamic custom domains. |
 
 ### Why not native preview URLs
 
@@ -63,20 +100,21 @@ per-script fee, only a soft script-count quota that cleanup reclaims).
 
 ```
 consumer repo (e.g. troyrhinehart)
-├─ on: push  → calls deploy-cf-worker.yml  (environment: production)
-├─ on: PR    → calls preview-cf-worker.yml (environment: preview)
-└─ on: PR closed → calls cleanup-cf-preview.yml
+├─ on: push  → calls cf.worker.deploy.yml          (environment: production)
+├─ on: PR    → calls cf.worker.preview.yml         (environment: preview)
+└─ on: PR closed → calls cf.worker.preview.cleanup.yml
 
 devkit
 ├─ actions/
-│  ├─ setup-node-pnpm/        (existing)
-│  ├─ deploy-cf-worker/       (MODIFIED: + worker-name input)
-│  ├─ infisical-secrets/      (NEW: Infisical OIDC fetch → env)
-│  └─ cf-worker-domain/       (NEW: attach/detach custom domain via CF API)
+│  ├─ node.setup/                (RENAMED from setup-node-pnpm)
+│  ├─ cf.worker.deploy/          (RENAMED from deploy-cf-worker; + worker-name input)
+│  ├─ infisical.secrets.fetch/   (NEW: Infisical OIDC fetch → env)
+│  └─ cf.worker.domain/          (NEW: attach/detach custom domain via CF API)
 └─ .github/workflows/
-   ├─ deploy-cf-worker.yml    (MODIFIED: + worker-name, always forward --env)
-   ├─ preview-cf-worker.yml   (NEW: nests deploy primitive + attach domain + comment)
-   └─ cleanup-cf-preview.yml  (NEW: detach domain + wrangler delete + remove comment)
+   ├─ node.ci.yml                (RENAMED from ci-node.yml)
+   ├─ cf.worker.deploy.yml       (RENAMED from deploy-cf-worker.yml; + worker-name, always forward --env)
+   ├─ cf.worker.preview.yml      (NEW: nests deploy primitive + attach domain + comment)
+   └─ cf.worker.preview.cleanup.yml (NEW: detach domain + wrangler delete + remove comment)
 ```
 
 Each workflow is thin glue over single-purpose composites. Every pinned
@@ -85,9 +123,10 @@ exactly one place.
 
 ## Components
 
-### 1. `actions/deploy-cf-worker/` (composite — MODIFIED)
+### 1. `actions/cf.worker.deploy/` (composite — RENAMED + MODIFIED)
 
-The deploy primitive's worker invocation. Add one optional input:
+The deploy primitive's worker invocation (was `deploy-cf-worker`). Add one
+optional input:
 
 - `worker-name` (default `''`): when set, fold `--name <worker-name>` into the
   wrangler command, so the deployed script name is overridden per call.
@@ -98,7 +137,7 @@ Existing `api-token`, `account-id`, `working-directory`, `environment`, `command
 inputs unchanged. (The `environment` input maps to wrangler-action's `environment`
 → `--env`.)
 
-### 2. `actions/infisical-secrets/` (composite — NEW)
+### 2. `actions/infisical.secrets.fetch/` (composite — NEW)
 
 Thin wrapper over the official `Infisical/secrets-action` (pinned to a SHA here,
 once). Fetches secrets via GitHub OIDC and exports them to the job env.
@@ -110,7 +149,7 @@ calling job/workflow).
 
 Used by: the deploy primitive, the preview domain job, and cleanup.
 
-### 3. `actions/cf-worker-domain/` (composite — NEW)
+### 3. `actions/cf.worker.domain/` (composite — NEW)
 
 Attach or detach a Workers custom domain via the Cloudflare API (raw `curl`; no
 SHA to pin).
@@ -128,24 +167,25 @@ Inputs: `mode` (`attach` | `detach`), `api-token`, `account-id`, `zone-id`,
 
 All calls assert `success: true` in the CF API response and fail the step otherwise.
 
-### 4. `.github/workflows/deploy-cf-worker.yml` (reusable — MODIFIED)
+### 4. `.github/workflows/cf.worker.deploy.yml` (reusable — RENAMED + MODIFIED)
 
-The deploy primitive. Production uses it directly; preview nests it.
+The deploy primitive (was `deploy-cf-worker.yml`). Production uses it directly;
+preview nests it.
 
 - New optional input `worker-name` (passthrough to the composite's `--name`).
 - **Always** forward `environment` to the composite as `--env` (breaking change — see Migration).
-- Replace the inline Infisical step with `uses: ./actions/infisical-secrets`.
+- Replace the inline Infisical step with `uses: ./actions/infisical.secrets.fetch`.
 - No PR/comment/preview logic — stays one job: deploy a worker for a given env/name.
 
-### 5. `.github/workflows/preview-cf-worker.yml` (reusable — NEW)
+### 5. `.github/workflows/cf.worker.preview.yml` (reusable — NEW)
 
 PR-preview orchestrator. Two jobs:
 
-- **`deploy`** — `uses: ./.github/workflows/deploy-cf-worker.yml` with
+- **`deploy`** — `uses: ./.github/workflows/cf.worker.deploy.yml` with
   `environment: preview`, `worker-name: ${{ inputs.app-name }}-pr-${{ github.event.pull_request.number }}`,
   `secrets: inherit`.
-- **`domain`** (`needs: deploy`) — fetch creds (`infisical-secrets`) →
-  `cf-worker-domain` `attach` (`hostname: pr-<N>.<preview-domain>`,
+- **`domain`** (`needs: deploy`) — fetch creds (`infisical.secrets.fetch`) →
+  `cf.worker.domain` `attach` (`hostname: pr-<N>.<preview-domain>`,
   `service: <app-name>-pr-<N>`) → `marocchino/sticky-pull-request-comment`
   (`header: cf-preview`, body = the masked URL). Holds `pull-requests: write`.
 
@@ -154,13 +194,13 @@ the deploy passthroughs (`working-directory`, `build-command`, `node-version`,
 `pnpm-version`), and the `infisical-*` set. Permissions: `contents: read`,
 `id-token: write`, `pull-requests: write`.
 
-### 6. `.github/workflows/cleanup-cf-preview.yml` (reusable — NEW)
+### 6. `.github/workflows/cf.worker.preview.cleanup.yml` (reusable — NEW)
 
 Triggered by the consumer on `pull_request: closed`. One job:
 
-- fetch creds (`infisical-secrets`) →
-- `cf-worker-domain` `detach` (`hostname: pr-<N>.<preview-domain>`) →
-- `wrangler delete` the per-PR worker via the **existing** `deploy-cf-worker`
+- fetch creds (`infisical.secrets.fetch`) →
+- `cf.worker.domain` `detach` (`hostname: pr-<N>.<preview-domain>`) →
+- `wrangler delete` the per-PR worker via the **existing** `cf.worker.deploy`
   composite (`command: delete`, `worker-name: <app>-pr-<N>`) →
 - `marocchino/sticky-pull-request-comment` with `delete: true`, `header: cf-preview`
   to remove the preview comment.
@@ -171,18 +211,18 @@ Order matters: detach the domain **before** deleting the worker.
 
 **Preview (PR #N opened / synchronized):**
 ```
-consumer PR workflow → preview-cf-worker.yml
-  job deploy:  infisical-secrets → wrangler deploy --env preview --name <app>-pr-N
-  job domain:  infisical-secrets → PUT workers/domains {pr-N.<domain> → <app>-pr-N}
-                                 → sticky comment "Preview: https://pr-N.<domain>"
+consumer PR workflow → cf.worker.preview.yml
+  job deploy:  infisical.secrets.fetch → wrangler deploy --env preview --name <app>-pr-N
+  job domain:  infisical.secrets.fetch → PUT workers/domains {pr-N.<domain> → <app>-pr-N}
+                                       → sticky comment "Preview: https://pr-N.<domain>"
 ```
 
 **Cleanup (PR #N closed):**
 ```
-consumer PR-closed workflow → cleanup-cf-preview.yml
-  infisical-secrets → GET+DELETE workers/domains (pr-N.<domain>)
-                    → wrangler delete --name <app>-pr-N
-                    → sticky comment delete
+consumer PR-closed workflow → cf.worker.preview.cleanup.yml
+  infisical.secrets.fetch → GET+DELETE workers/domains (pr-N.<domain>)
+                          → wrangler delete --name <app>-pr-N
+                          → sticky comment delete
 ```
 
 ## Cloudflare specifics
@@ -196,16 +236,22 @@ consumer PR-closed workflow → cleanup-cf-preview.yml
   is a placeholder, overridden per-PR by `--name`. It should carry **no custom
   route** (so it doesn't fight the per-PR custom domain we attach via API).
 
-## Breaking change & migration
+## Breaking changes & migration
 
-Always passing `--env` means a consumer whose `wrangler.toml` has **no
-`[env.production]`** block would have wrangler deploy a worker named
-`<name>-production` (wrangler auto-suffixes unnamed environments) — silently
-renaming the production worker. Every consumer must migrate to explicit
-`[env.production]` / `[env.preview]` blocks **in lockstep** with adopting this.
+Two breaking changes land together; both require a coordinated update to the only
+consumer, `gingur/troyrhinehart` (separate repo, migrated there, not here):
 
-Today the only consumer is `gingur/troyrhinehart` (separate repo, migrated there,
-not here). Migration recipe (documented in the README):
+1. **Always-forward `--env`.** A consumer whose `wrangler.toml` has **no
+   `[env.production]`** block would have wrangler deploy a worker named
+   `<name>-production` (wrangler auto-suffixes unnamed environments) — silently
+   renaming the production worker. Consumers must migrate to explicit
+   `[env.production]` / `[env.preview]` blocks.
+2. **Renames.** `ci-node.yml` → `node.ci.yml` and `deploy-cf-worker.yml` →
+   `cf.worker.deploy.yml`. troyrhinehart references both (`ci.yml`, `deploy.yml`)
+   and must update the `uses:` paths. (Composite-action renames are devkit-internal
+   only — no consumer references them directly.)
+
+Consumer `wrangler.toml` migration:
 
 ```toml
 # before (top-level only)
@@ -231,8 +277,8 @@ name = "troyrhinehart-preview"   # placeholder; overridden per-PR by --name
 |---|---|---|
 | Sticky PR comment | **Adopt** | `marocchino/sticky-pull-request-comment` (marker upsert + `delete`) |
 | Infisical OIDC fetch | **Adopt** (wrapped) | official `Infisical/secrets-action`, `method: oidc` |
-| Workers custom-domain attach/detach | **Build** | `cf-worker-domain` curl composite (no OSS action exists) |
-| wrangler deploy / delete | **Reuse** | existing `deploy-cf-worker` composite (`command: deploy` / `delete`) |
+| Workers custom-domain attach/detach | **Build** | `cf.worker.domain` curl composite (no OSS action exists) |
+| wrangler deploy / delete | **Reuse** | existing `cf.worker.deploy` composite (`command: deploy` / `delete`) |
 | Sticky-comment as own action | **Defer** | adopt marocchino instead of hand-rolling |
 
 ## Risks & verification
@@ -247,7 +293,7 @@ name = "troyrhinehart-preview"   # placeholder; overridden per-PR by --name
    prompt). Verify command assembly with `act` / `--dry-run`.
 3. **First-hit propagation:** brand-new PR custom domain may take seconds for
    DNS/cert to go live. Acceptable; note in docs.
-4. **CF API error handling:** `cf-worker-domain` must assert `success: true` and
+4. **CF API error handling:** `cf.worker.domain` must assert `success: true` and
    fail loudly, so a broken attach/detach doesn't pass silently.
 5. **Fork PRs (security boundary, intentional):** GitHub does not expose
    `id-token`/secrets to workflows triggered by PRs from forks. Since previews
@@ -270,7 +316,7 @@ permissions:
   pull-requests: write
 jobs:
   preview:
-    uses: gingur/devkit/.github/workflows/preview-cf-worker.yml@main
+    uses: gingur/devkit/.github/workflows/cf.worker.preview.yml@main
     with:
       app-name: troyrhinehart
       preview-domain: troyrhinehart.com
@@ -294,7 +340,7 @@ permissions:
   pull-requests: write
 jobs:
   cleanup:
-    uses: gingur/devkit/.github/workflows/cleanup-cf-preview.yml@main
+    uses: gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main
     with:
       app-name: troyrhinehart
       preview-domain: troyrhinehart.com
@@ -309,5 +355,6 @@ jobs:
 ## Out of scope / future
 
 - Extract a generic sticky-comment composite (only if a second non-preview consumer appears).
+- `bun.*` sibling namespace (e.g. `bun.ci`, `bun.setup`) if/when bun support is added.
 - `wrangler.toml` composition/templating ([#6](https://github.com/gingur/devkit/issues/6)) — unrelated, deferred.
 - Concurrency control (cancel in-flight preview deploys per PR) — can add `concurrency:` later if needed.

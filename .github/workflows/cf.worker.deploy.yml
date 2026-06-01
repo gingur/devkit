@@ -48,11 +48,6 @@ on:
         description: 'Infisical machine identity UUID with OIDC trust for this repo'
         type: string
         required: true
-      infisicalAudience:
-        description: 'OIDC audience claim (must match the identity configuration)'
-        type: string
-        required: false
-        default: 'https://github.com/gingur'
 
 permissions:
   contents: read
@@ -97,7 +92,6 @@ jobs:
         uses: gingur/devkit/actions/infisical.secrets.fetch@main
         with:
           identity: ${{ inputs.infisicalIdentity }}
-          audience: ${{ inputs.infisicalAudience }}
           project: ${{ inputs.infisicalProject }}
           env: ${{ inputs.infisicalEnv }}
           path: ${{ inputs.infisicalPath }}

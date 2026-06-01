@@ -18,7 +18,7 @@ inputs:
     description: 'Hostname to bind, e.g. pr-42.example.com'
     required: true
   service:
-    description: 'Worker script name (required for attach)'
+    description: 'Worker script name to bind (the CF API field is "service"). Used by attach.'
     required: false
     default: ''
 
@@ -47,20 +47,19 @@ runs:
 
         case "$MODE" in
           attach)
-            [ -n "$SERVICE" ] || { echo "::error::service is required for attach"; exit 1; }
-            resp=$(curl -fsS "${auth[@]}" -X PUT "$api" \
+            resp=$(curl -sS "${auth[@]}" -X PUT "$api" \
               --data "$(jq -n --arg h "$HOSTNAME" --arg s "$SERVICE" --arg z "$ZONE_ID" \
                         '{hostname:$h, service:$s, zone_id:$z}')")
             assert_success "$resp"
             echo "Attached $HOSTNAME -> $SERVICE"
             ;;
           detach)
-            list=$(curl -fsS "${auth[@]}" -G "$api" \
+            list=$(curl -sS "${auth[@]}" -G "$api" \
               --data-urlencode "hostname=${HOSTNAME}" --data-urlencode "zone_id=${ZONE_ID}")
             assert_success "$list"
             id=$(echo "$list" | jq -r '.result[0].id // empty')
             if [ -z "$id" ]; then echo "No domain binding for $HOSTNAME — nothing to detach."; exit 0; fi
-            resp=$(curl -fsS "${auth[@]}" -X DELETE "$api/$id")
+            resp=$(curl -sS "${auth[@]}" -X DELETE "$api/$id")
             assert_success "$resp"
             echo "Detached $HOSTNAME (id=$id)"
             ;;

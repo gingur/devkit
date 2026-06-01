@@ -17,17 +17,17 @@ actions/             composite actions   — uses: gingur/devkit/actions/<name>@
 
 ```yaml
 jobs:
-  ci:
-    uses: gingur/devkit/.github/workflows/ci-node.yml@main
+  verify:
+    uses: gingur/devkit/.github/workflows/node.verify.yml@main
     with:
-      node-version: "20"
+      nodeVersion: "20"
 ```
 
 **Composite action:**
 
 ```yaml
 steps:
-  - uses: gingur/devkit/actions/setup-node-pnpm@main
+  - uses: gingur/devkit/actions/node.setup@main
 ```
 
 **Shared configs:**
@@ -107,7 +107,7 @@ Reusable workflows and actions only accept `production | preview` for the `envir
 
 ## Secret rotation
 
-Infisical is the single source of truth for deploy credentials. Rotate in **one place** and it propagates to every consumer on the next OIDC fetch — no per-repo secrets, no commits, no PRs. The `deploy-cf-worker.yml` workflow fetches `CF_API_TOKEN` / `CF_ACCOUNT_ID` from Infisical at deploy time, so consumers never store them.
+Infisical is the single source of truth for deploy credentials. Rotate in **one place** and it propagates to every consumer on the next OIDC fetch — no per-repo secrets, no commits, no PRs. The `cf.worker.deploy.yml` workflow fetches `CF_API_TOKEN` / `CF_ACCOUNT_ID` from Infisical at deploy time, so consumers never store them.
 
 When rotating a Cloudflare API token (annual, or on compromise / personnel change):
 

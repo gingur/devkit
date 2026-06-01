@@ -16,6 +16,10 @@ inputs:
     description: 'wrangler --env value. Empty means run without --env.'
     required: false
     default: ''
+  worker:
+    description: 'Override the deployed script name (wrangler --name). Empty uses the config name.'
+    required: false
+    default: ''
   command:
     description: 'wrangler subcommand'
     required: false
@@ -31,4 +35,4 @@ runs:
         accountId: ${{ inputs.account }}
         workingDirectory: ${{ inputs.cwd }}
         environment: ${{ inputs.env }}
-        command: ${{ inputs.command }}
+        command: ${{ inputs.worker == '' && inputs.command || format('{0} --name {1}', inputs.command, inputs.worker) }}

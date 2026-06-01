@@ -84,6 +84,18 @@ configs/             shared tool configs (eslint, prettier, tsconfig, …)
 - Multi-job workflows use `needs:` to order; the credential fetch
   (`infisical.secrets.fetch`) runs per job that needs creds (jobs don't share env).
 
+## Errors & guards
+
+Prefer **natural errors** over defensive validation. Don't guard or pre-check
+conditions that can't occur when things are wired correctly — especially internal
+inputs set by our own workflows. Let the underlying tool (wrangler, the Cloudflare
+API, GitHub Actions) surface its own error; a clear natural failure beats a
+hand-formatted one for something that shouldn't fail once defined right.
+
+Reserve explicit handling for genuinely fallible operations (network / API calls)
+— and there, surface the **real** underlying error (e.g. the API's error body),
+don't replace it with a generic message.
+
 ## Action pinning
 
 Pin by **trust in who can move the tag**:

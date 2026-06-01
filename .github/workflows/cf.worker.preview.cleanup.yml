@@ -1,0 +1,74 @@
+name: Cleanup Cloudflare Worker preview
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        type: string
+        required: true
+      domain:
+        type: string
+        required: true
+      cfZone:
+        type: string
+        required: true
+      infisicalProject:
+        type: string
+        required: true
+      infisicalEnv:
+        type: string
+        required: true
+      infisicalPath:
+        type: string
+        required: true
+      infisicalIdentity:
+        type: string
+        required: true
+
+# Share the per-PR group with cf.worker.preview so closing a PR cancels any
+# in-flight preview deploy before tearing down.
+concurrency:
+  group: cf-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    env:
+      WORKER: ${{ inputs.app }}-pr-${{ github.event.pull_request.number }}
+      HOST: pr-${{ github.event.pull_request.number }}.${{ inputs.domain }}
+    steps:
+      - name: Fetch CF credentials
+        uses: gingur/devkit/actions/infisical.secrets.fetch@main
+        with:
+          identity: ${{ inputs.infisicalIdentity }}
+          project: ${{ inputs.infisicalProject }}
+          env: ${{ inputs.infisicalEnv }}
+          path: ${{ inputs.infisicalPath }}
+
+      - name: Detach custom domain
+        uses: gingur/devkit/actions/cf.worker.domain@main
+        with:
+          mode: detach
+          token: ${{ env.CF_API_TOKEN }}
+          account: ${{ env.CF_ACCOUNT_ID }}
+          zone: ${{ inputs.cfZone }}
+          hostname: ${{ env.HOST }}
+
+      - name: Delete preview worker
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ env.CF_API_TOKEN }}
+          accountId: ${{ env.CF_ACCOUNT_ID }}
+          command: delete --name ${{ env.WORKER }}
+
+      - name: Remove preview comment
+        uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
+        with:
+          header: cf-preview
+          delete: true

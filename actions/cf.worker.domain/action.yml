@@ -1,0 +1,68 @@
+name: 'Cloudflare Worker custom domain'
+description: 'Attach or detach a Workers custom domain via the Cloudflare API. Auto-manages the proxied DNS record + edge cert. Needs a token with Workers Routes + DNS edit.'
+
+inputs:
+  mode:
+    description: 'attach | detach'
+    required: true
+  token:
+    description: 'Cloudflare API token'
+    required: true
+  account:
+    description: 'Cloudflare account ID'
+    required: true
+  zone:
+    description: 'Cloudflare zone ID for the domain'
+    required: true
+  hostname:
+    description: 'Hostname to bind, e.g. pr-42.example.com'
+    required: true
+  service:
+    description: 'Worker script name to bind (the CF API field is "service"). Used by attach.'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Manage custom domain
+      shell: bash
+      env:
+        CF_API_TOKEN: ${{ inputs.token }}
+        ACCOUNT_ID: ${{ inputs.account }}
+        ZONE_ID: ${{ inputs.zone }}
+        HOSTNAME: ${{ inputs.hostname }}
+        SERVICE: ${{ inputs.service }}
+        MODE: ${{ inputs.mode }}
+      run: |
+        set -euo pipefail
+        api="https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/workers/domains"
+        auth=(-H "Authorization: Bearer ${CF_API_TOKEN}" -H "Content-Type: application/json")
+
+        assert_success() { # $1 = json response
+          if [ "$(echo "$1" | jq -r '.success')" != "true" ]; then
+            echo "::error::Cloudflare API call failed:"; echo "$1" | jq -r '.errors'; exit 1
+          fi
+        }
+
+        case "$MODE" in
+          attach)
+            resp=$(curl -sS "${auth[@]}" -X PUT "$api" \
+              --data "$(jq -n --arg h "$HOSTNAME" --arg s "$SERVICE" --arg z "$ZONE_ID" \
+                        '{hostname:$h, service:$s, zone_id:$z}')")
+            assert_success "$resp"
+            echo "Attached $HOSTNAME -> $SERVICE"
+            ;;
+          detach)
+            list=$(curl -sS "${auth[@]}" -G "$api" \
+              --data-urlencode "hostname=${HOSTNAME}" --data-urlencode "zone_id=${ZONE_ID}")
+            assert_success "$list"
+            id=$(echo "$list" | jq -r '.result[0].id // empty')
+            if [ -z "$id" ]; then echo "No domain binding for $HOSTNAME — nothing to detach."; exit 0; fi
+            resp=$(curl -sS "${auth[@]}" -X DELETE "$api/$id")
+            assert_success "$resp"
+            echo "Detached $HOSTNAME (id=$id)"
+            ;;
+          *)
+            echo "::error::mode must be attach or detach (got '$MODE')"; exit 1 ;;
+        esac

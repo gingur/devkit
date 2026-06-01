@@ -89,7 +89,7 @@ composite `actions/cf.worker.deploy/`. Jobs/steps: `node.verify` → job `verify
 | Hostname shape | `pr-<N>.<domain>` (one label deep) | Covered by Universal SSL — no Advanced Certificate needed. |
 | URL surfacing | **Sticky PR comment** (adopt `marocchino/sticky-pull-request-comment`) | Marker-based upsert + delete-on-close in one maintained action. |
 | Cleanup | **Auto-delete on PR close** (detach domain, then `wrangler delete`) | Keeps the account tidy; reclaims script-count quota. |
-| Cred fetch | Extract `infisical.secrets.fetch` composite (wraps official `Infisical/secrets-action`) | Used in 3 places; centralizes the pinned SHA + OIDC wiring. |
+| Cred fetch | Extract `infisical.secrets.fetch` composite (wraps official `Infisical/secrets-action`) | Used in 3 places; centralizes the version pin + OIDC wiring. |
 | Custom-domain API | **Build** a `cf.worker.domain` curl composite | No OSS action exists; wrangler has no CLI for dynamic custom domains. |
 
 ### Why not native preview URLs
@@ -125,9 +125,11 @@ devkit
    └─ cf.worker.preview.cleanup.yml (NEW: detach domain + wrangler delete + remove comment)
 ```
 
-Each workflow is thin glue over single-purpose composites. Every pinned
-third-party SHA (Infisical, wrangler-action, marocchino, actions/*) lives in
-exactly one place.
+Each workflow is thin glue over single-purpose composites. Each third-party
+action lives in exactly one place. Pinning follows the policy in `CLAUDE.md`:
+credible-org actions use **version tags** (`Infisical`, `cloudflare`, `pnpm`,
+`actions/*`); the only **SHA**-pinned action is the individual-maintainer
+`marocchino/sticky-pull-request-comment`.
 
 ## Components
 
@@ -147,8 +149,9 @@ inputs unchanged. (The `environment` input maps to wrangler-action's `environmen
 
 ### 2. `actions/infisical.secrets.fetch/` (composite — NEW)
 
-Thin wrapper over the official `Infisical/secrets-action` (pinned to a SHA here,
-once). Fetches secrets via GitHub OIDC and exports them to the job env.
+Thin wrapper over the official `Infisical/secrets-action` (credible org → pinned
+to a version tag here, once). Fetches secrets via GitHub OIDC and exports them to
+the job env.
 
 Inputs (bare — single-provider surface): `identityId`, `oidcAudience` (default
 `https://github.com/gingur`), `projectSlug`, `envSlug`, `secretPath`. Runs the

@@ -69,15 +69,25 @@ Need a frozen reference point (paused upgrade, post-mortem snapshot)? Pin to a s
 
 ### Action pinning
 
-**Third-party** actions (anything not under `gingur/`) are pinned to a full commit SHA with a trailing version comment, per [GitHub's security-hardening guidance](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#using-third-party-actions) — a mutable tag like `@v4` can be repointed at malicious code, a SHA cannot:
+Pin by **trust in who can move the tag**:
 
-```yaml
-uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4
-```
+- **gingur's own** actions/workflows → `@main` (we control them; see the consumer convention above).
+- **Third-party from a credible organization** — the tool's official org or a well-known GitHub org → **version tag**. The vendor controls the tag, tags stay readable, and patch releases flow in:
 
-This includes GitHub-owned `actions/*` (lower risk, pinned for consistency). **gingur's own** actions and workflows stay on `@main` — that's the consumer convention above, and we control them.
+  ```yaml
+  uses: cloudflare/wrangler-action@v4        # Cloudflare (org)
+  uses: Infisical/secrets-action@v1.0.16     # Infisical (org)
+  uses: pnpm/action-setup@v6                 # pnpm (org)
+  uses: actions/checkout@v6                  # GitHub
+  ```
 
-To re-pin after an upstream release, resolve the tag to its commit and update both the SHA and the comment:
+- **Third-party from an individual / community maintainer** — a personal account, not an org → **full commit SHA** with a trailing version comment, per [GitHub's security-hardening guidance](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#using-third-party-actions). A compromised personal account could repoint a mutable tag at malicious code; a SHA can't be moved:
+
+  ```yaml
+  uses: marocchino/sticky-pull-request-comment@<sha> # v3.0.4  (individual maintainer)
+  ```
+
+The test: *who can move the tag?* A trusted org → tag. One person's account → SHA. To resolve a community action's tag to its commit:
 
 ```bash
 gh api repos/<owner>/<repo>/commits/<tag> --jq .sha

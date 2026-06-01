@@ -77,12 +77,20 @@ configs/             shared tool configs (eslint, prettier, tsconfig, …)
 
 ## Action pinning
 
-Third-party actions (anything not under `gingur/`) are pinned to a full commit SHA
-with a trailing version comment; gingur's own actions/workflows stay `@main`. See
-[README → Action pinning](./README.md#action-pinning) for the rule and the re-pin
-command. **Each pinned SHA lives in exactly one place** — wrap a repeatedly-used
-third-party action in a composite (e.g. `infisical.secrets.fetch` wraps
-`Infisical/secrets-action`) so the pin is bumped once.
+Pin by **trust in who can move the tag**:
+
+- **gingur's own** actions/workflows → `@main`.
+- **Third-party from a credible org** (the tool's official org or a well-known
+  GitHub org — `cloudflare`, `Infisical`, `pnpm`, `actions`) → **version tag**
+  (`@v4`). Readable, vendor-controlled, picks up patches.
+- **Third-party from an individual / community maintainer** (a personal account,
+  not an org — e.g. `marocchino`) → **full commit SHA** + trailing version comment.
+
+The test: *who can move the tag?* A trusted org → tag; one person's account → SHA.
+See [README → Action pinning](./README.md#action-pinning) for examples and the
+re-pin command. **A repeatedly-used third-party action lives in one place** — wrap
+it in a composite (e.g. `infisical.secrets.fetch` wraps `Infisical/secrets-action`)
+so it's bumped once.
 
 ## Credentials & OIDC
 

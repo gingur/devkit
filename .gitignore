@@ -3,3 +3,6 @@ node_modules/
 *.log
 .env
 .env.local
+
+# Superpowers working docs (specs/plans) — local-only process artifacts, never committed
+docs/superpowers/

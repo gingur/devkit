@@ -20,7 +20,7 @@ jobs:
   verify:
     uses: gingur/devkit/.github/workflows/node.verify.yml@main
     with:
-      nodeVersion: "20"
+      node: "20"
 ```
 
 **Composite action:**

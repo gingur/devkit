@@ -36,8 +36,9 @@ A 3-tier identifier system. Pick the tier by *what kind of thing* you're naming.
 
 ### Identifiers: camelCase, concise
 
-- Prefer a **single word** (`deploy`, `verify`, `cleanup`, `secrets`, `attach`).
-  Use camelCase only when one word won't do (`workerName`, `previewDomain`).
+- Prefer a **single word** (`deploy`, `verify`, `cleanup`, `secrets`, `attach`,
+  `worker`, `domain`, `token`, `zone`). Use camelCase only when one word won't do
+  (`cfZone`, `infisicalProject`).
 - **No kebab-case.** No `snake_case` for identifiers (that's reserved for env/secrets).
 - **Provider-prefix an input only when its surface spans multiple providers** —
   e.g. a workflow taking both Infisical and Cloudflare inputs uses
@@ -147,7 +148,7 @@ name = "<app>-preview"   # placeholder; overridden per-PR by --name, no custom r
 
 ### Previews
 
-- Each PR gets an immutable masked URL `https://pr-<N>.<previewDomain>`; content
+- Each PR gets an immutable masked URL `https://pr-<N>.<domain>`; content
   updates on each push; the worker + custom domain are deleted on PR close.
 - The `infisicalEnv` for previews points at wherever the CF token lives (often
   `production`) — it is independent of the `env: preview` that drives

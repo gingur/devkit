@@ -115,12 +115,12 @@ consumer repo (e.g. troyrhinehart)
 devkit
 ├─ actions/
 │  ├─ node.setup/                (RENAMED from setup-node-pnpm)
-│  ├─ cf.worker.deploy/          (RENAMED from deploy-cf-worker; + workerName input)
+│  ├─ cf.worker.deploy/          (RENAMED from deploy-cf-worker; + worker input)
 │  ├─ infisical.secrets.fetch/   (NEW: Infisical OIDC fetch → env)
 │  └─ cf.worker.domain/          (NEW: attach/detach custom domain via CF API)
 └─ .github/workflows/
    ├─ node.verify.yml            (RENAMED from ci-node.yml)
-   ├─ cf.worker.deploy.yml       (RENAMED from deploy-cf-worker.yml; + workerName, always forward --env)
+   ├─ cf.worker.deploy.yml       (RENAMED from deploy-cf-worker.yml; + worker, always forward --env)
    ├─ cf.worker.preview.yml      (NEW: nests deploy primitive + attach domain + comment)
    └─ cf.worker.preview.cleanup.yml (NEW: detach domain + wrangler delete + remove comment)
 ```

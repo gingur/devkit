@@ -4,7 +4,7 @@
 
 **Goal:** Enable per-PR Cloudflare Worker previews served at an immutable masked URL (`https://pr-<N>.<domain>`), torn down on PR close — and refactor the repo to the new `<provider>.<service>.<action>` naming + version-tag pinning standards.
 
-**Architecture:** Two phases. **Phase 1** is a behavior-preserving refactor (renames, camelCase inputs, version-tag pins, extract `infisical.secrets.fetch`) plus the lockstep consumer (`troyrhinehart`) update. **Phase 2** adds the preview feature: `workerName` + always-`--env`, a `cf.worker.domain` curl composite, `cf.worker.preview.yml` (nests the deploy primitive + attaches a custom domain + sticky comment) and `cf.worker.preview.cleanup.yml`, plus the consumer's `wrangler.toml` migration and new preview workflows.
+**Architecture:** Two phases. **Phase 1** is a behavior-preserving refactor (renames, camelCase inputs, version-tag pins, extract `infisical.secrets.fetch`) plus the lockstep consumer (`troyrhinehart`) update. **Phase 2** adds the preview feature: `worker` + always-`--env`, a `cf.worker.domain` curl composite, `cf.worker.preview.yml` (nests the deploy primitive + attaches a custom domain + sticky comment) and `cf.worker.preview.cleanup.yml`, plus the consumer's `wrangler.toml` migration and new preview workflows.
 
 **Tech Stack:** GitHub Actions (composite actions + reusable workflows), `cloudflare/wrangler-action`, `Infisical/secrets-action` (OIDC), `marocchino/sticky-pull-request-comment`, Cloudflare Workers + Workers Domains REST API. Local verification via `act` + rootless `podman`.
 
@@ -33,7 +33,7 @@
 devkit/
   actions/
     node.setup/action.yml              (rename of setup-node-pnpm; camelCase; pins→tags)
-    cf.worker.deploy/action.yml        (rename of deploy-cf-worker; camelCase; +workerName [P2]; pin→tag)
+    cf.worker.deploy/action.yml        (rename of deploy-cf-worker; camelCase; +worker [P2]; pin→tag)
     infisical.secrets.fetch/action.yml (NEW; wraps Infisical/secrets-action)
     cf.worker.domain/action.yml        (NEW [P2]; attach/detach via curl)
   .github/workflows/
@@ -132,7 +132,7 @@ git commit -m "Rename setup-node-pnpm -> node.setup (camelCase inputs, version-t
 git mv actions/deploy-cf-worker actions/cf.worker.deploy
 ```
 
-- [ ] **Step 2: Rewrite `actions/cf.worker.deploy/action.yml`** (camelCase; wrangler pin→tag; behavior unchanged — no `workerName` yet)
+- [ ] **Step 2: Rewrite `actions/cf.worker.deploy/action.yml`** (camelCase; wrangler pin→tag; behavior unchanged — no `worker` yet)
 
 ```yaml
 name: 'Deploy Cloudflare Worker'
@@ -490,7 +490,7 @@ jobs:
   verify:
     uses: gingur/devkit/.github/workflows/node.verify.yml@main
     with:
-      nodeVersion: "20"
+      node: "20"
 ```
 
 ```yaml
@@ -544,8 +544,8 @@ jobs:
       - uses: ./actions/cf.worker.deploy
         continue-on-error: true
         with:
-          apiToken: bogus
-          accountId: bogus
+          token: bogus
+          account: bogus
           command: deploy --dry-run
 ```
 
@@ -618,7 +618,7 @@ git -C ../troyrhinehart commit -m "Adopt devkit node.verify / cf.worker.deploy (
 
 # PHASE 2 — Preview feature
 
-### Task 9: Add `workerName` to the `cf.worker.deploy` composite
+### Task 9: Add `worker` to the `cf.worker.deploy` composite
 
 **Files:**
 - Modify: `actions/cf.worker.deploy/action.yml`
@@ -688,7 +688,7 @@ Expected: `exit=0`, no "cannot use --name with --env" error. (Full override-of-n
 
 ```bash
 git add actions/cf.worker.deploy/action.yml
-git commit -m "cf.worker.deploy: add workerName input (wrangler --name override)"
+git commit -m "cf.worker.deploy: add worker input (wrangler --name override)"
 ```
 
 ### Task 10: Forward `--env` in `cf.worker.deploy.yml` (breaking change)
@@ -728,7 +728,7 @@ Expected: `OK`
 
 ```bash
 git add .github/workflows/cf.worker.deploy.yml
-git commit -m "cf.worker.deploy.yml: forward --env and workerName to wrangler (breaking: requires [env.production])"
+git commit -m "cf.worker.deploy.yml: forward --env and worker to wrangler (breaking: requires [env.production])"
 ```
 
 ### Task 11: Create `cf.worker.domain` composite (attach/detach custom domain)
@@ -1170,7 +1170,7 @@ name = "troyrhinehart"
 name = "troyrhinehart-preview"   # placeholder; overridden per-PR by --name; no custom route here
 ```
 
-- [ ] **Step 2: Get the zone id** for `troyrhinehart.com` (needed for `cfZoneId`)
+- [ ] **Step 2: Get the zone id** for `troyrhinehart.com` (needed for `cfZone`)
 
 Run (needs a CF token locally, or read from the dashboard):
 ```bash
@@ -1255,7 +1255,7 @@ git -C ../troyrhinehart commit -m "Add per-PR preview + cleanup; migrate wrangle
 
 ## Self-review
 
-- **Spec coverage:** env model (T10 `--env` forward), per-PR worker (T9 `workerName` + T12 `workerName: <app>-pr-<N>`), masking (T11 `cf.worker.domain` + T12 attach), hostname shape (T12 `pr-<N>.<previewDomain>`), sticky comment (T12 marocchino), cleanup (T13), infisical extraction (T3, used T5/T12/T13), naming + pins (T1–T6), breaking change + migration (T8, T15), risks/verification (T7, T9-S3, T16), README + token scope (T14). All spec sections map to a task.
+- **Spec coverage:** env model (T10 `--env` forward), per-PR worker (T9 `worker` + T12 `worker: <app>-pr-<N>`), masking (T11 `cf.worker.domain` + T12 attach), hostname shape (T12 `pr-<N>.<domain>`), sticky comment (T12 marocchino), cleanup (T13), infisical extraction (T3, used T5/T12/T13), naming + pins (T1–T6), breaking change + migration (T8, T15), risks/verification (T7, T9-S3, T16), README + token scope (T14). All spec sections map to a task.
 - **Type/name consistency:** input names match across producer/consumer — `worker`, `app`, `domain`, `cfZone`, `infisical*` identical in `cf.worker.deploy.yml` ↔ `cf.worker.preview.yml` ↔ recipes; composite inputs (`token`, `account`, `zone`, `hostname`, `service`, `mode`) match call sites; the marocchino `header: cf-preview` matches between attach-comment (T12) and delete-comment (T13).
 - **Pinning:** every third-party `uses:` is a version tag except `marocchino@0ea0beb…` (SHA). `cf.worker.domain` uses `curl` (no action to pin).
 - **Placeholders:** the only `<...>` tokens are genuine consumer-supplied values (`<zoneId>`, `<identityId>`) — provided where known (identity UUID) and flagged where the user must fetch (zone id, Task 15 Step 2).

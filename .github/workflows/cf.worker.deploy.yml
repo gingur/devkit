@@ -24,9 +24,14 @@ on:
         required: false
         default: '.'
       env:
-        description: 'Deployment target: production | preview. Validated by case guard; sets the GitHub Environment for this job.'
+        description: 'Deployment target: production | preview. Validated by case guard; sets the GitHub Environment for this job and the wrangler --env.'
         type: string
         required: true
+      worker:
+        description: 'Override the deployed worker name (wrangler --name). Empty uses the config name.'
+        type: string
+        required: false
+        default: ''
       infisicalProject:
         description: 'Infisical project slug (e.g., gingur-7xjq)'
         type: string
@@ -101,5 +106,7 @@ jobs:
         uses: gingur/devkit/actions/cf.worker.deploy@main
         with:
           cwd: ${{ inputs.cwd }}
+          env: ${{ inputs.env }}
+          worker: ${{ inputs.worker }}
           token: ${{ env.CF_API_TOKEN }}
           account: ${{ env.CF_ACCOUNT_ID }}

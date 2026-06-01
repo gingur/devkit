@@ -39,6 +39,9 @@ permissions:
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    # Match the preview deploy's GitHub Environment so teardown authenticates to
+    # Infisical under the same OIDC subject: ...:environment:preview.
+    environment: preview
     env:
       WORKER: ${{ inputs.app }}-pr-${{ github.event.pull_request.number }}
       HOST: pr-${{ github.event.pull_request.number }}.${{ inputs.domain }}

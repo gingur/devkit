@@ -3,22 +3,22 @@ name: Deploy Cloudflare Worker
 on:
   workflow_call:
     inputs:
-      node-version:
+      nodeVersion:
         description: 'Node.js version (optional override). Empty means read from .nvmrc.'
         type: string
         required: false
         default: ''
-      pnpm-version:
+      pnpmVersion:
         description: 'pnpm version (optional override). Empty means read from packageManager field.'
         type: string
         required: false
         default: ''
-      build-command:
+      buildCommand:
         description: 'Build command to run before deploy'
         type: string
         required: false
         default: 'pnpm build'
-      working-directory:
+      workingDirectory:
         description: 'Directory containing package.json + wrangler.toml'
         type: string
         required: false
@@ -27,23 +27,23 @@ on:
         description: 'Deployment target: production | preview. Validated by case guard; sets the GitHub Environment for this job.'
         type: string
         required: true
-      infisical-project-slug:
+      infisicalProjectSlug:
         description: 'Infisical project slug (e.g., gingur-7xjq)'
         type: string
         required: true
-      infisical-env-slug:
+      infisicalEnvSlug:
         description: 'Infisical environment slug (e.g., production)'
         type: string
         required: true
-      infisical-secret-path:
+      infisicalSecretPath:
         description: 'Infisical secret folder path (e.g., /troyrhinehart)'
         type: string
         required: true
-      infisical-identity-id:
+      infisicalIdentityId:
         description: 'Infisical machine identity UUID with OIDC trust for this repo'
         type: string
         required: true
-      infisical-oidc-audience:
+      infisicalOidcAudience:
         description: 'OIDC audience claim (must match the identity configuration)'
         type: string
         required: false
@@ -69,43 +69,37 @@ jobs:
               ;;
           esac
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@v6
 
-      - uses: gingur/devkit/actions/setup-node-pnpm@main
+      - uses: gingur/devkit/actions/node.setup@main
         with:
-          node-version: ${{ inputs.node-version }}
-          pnpm-version: ${{ inputs.pnpm-version }}
+          nodeVersion: ${{ inputs.nodeVersion }}
+          pnpmVersion: ${{ inputs.pnpmVersion }}
 
       - name: Install dependencies
-        working-directory: ${{ inputs.working-directory }}
+        working-directory: ${{ inputs.workingDirectory }}
         shell: bash
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        working-directory: ${{ inputs.working-directory }}
+        working-directory: ${{ inputs.workingDirectory }}
         shell: bash
-        run: ${{ inputs.build-command }}
+        run: ${{ inputs.buildCommand }}
 
       # CF_API_TOKEN / CF_ACCOUNT_ID live only in Infisical (single source of truth).
-      # To rotate them, see the "Secret rotation" runbook in devkit's README — rotate
-      # in Infisical and the next OIDC fetch below picks up the new value automatically.
-      - name: Fetch CF credentials from Infisical via GitHub OIDC
-        uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
+      # To rotate them, see the "Secret rotation" runbook in the README.
+      - name: Fetch CF credentials
+        uses: gingur/devkit/actions/infisical.secrets.fetch@main
         with:
-          method: oidc
-          identity-id: ${{ inputs.infisical-identity-id }}
-          oidc-audience: ${{ inputs.infisical-oidc-audience }}
-          project-slug: ${{ inputs.infisical-project-slug }}
-          env-slug: ${{ inputs.infisical-env-slug }}
-          secret-path: ${{ inputs.infisical-secret-path }}
-          export-type: env
+          identityId: ${{ inputs.infisicalIdentityId }}
+          oidcAudience: ${{ inputs.infisicalOidcAudience }}
+          projectSlug: ${{ inputs.infisicalProjectSlug }}
+          envSlug: ${{ inputs.infisicalEnvSlug }}
+          secretPath: ${{ inputs.infisicalSecretPath }}
 
       - name: Deploy
-        uses: gingur/devkit/actions/deploy-cf-worker@main
+        uses: gingur/devkit/actions/cf.worker.deploy@main
         with:
-          working-directory: ${{ inputs.working-directory }}
-          # Infisical fetched CF_API_TOKEN / CF_ACCOUNT_ID into the job env;
-          # hand them to the composite as inputs (wrangler-action takes them
-          # via inputs, not env). Values stay masked as registered secrets.
-          api-token: ${{ env.CF_API_TOKEN }}
-          account-id: ${{ env.CF_ACCOUNT_ID }}
+          workingDirectory: ${{ inputs.workingDirectory }}
+          apiToken: ${{ env.CF_API_TOKEN }}
+          accountId: ${{ env.CF_ACCOUNT_ID }}

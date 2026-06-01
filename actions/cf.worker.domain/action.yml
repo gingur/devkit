@@ -39,9 +39,9 @@ runs:
         api="https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/workers/domains"
         auth=(-H "Authorization: Bearer ${CF_API_TOKEN}" -H "Content-Type: application/json")
 
-        assert_success() { # $1 = json response
-          if [ "$(echo "$1" | jq -r '.success')" != "true" ]; then
-            echo "::error::Cloudflare API call failed:"; echo "$1" | jq -r '.errors'; exit 1
+        assert_success() { # $1 = raw API response
+          if [ "$(printf '%s' "$1" | jq -r '.success' 2>/dev/null)" != "true" ]; then
+            echo "::error::Cloudflare API call failed:"; printf '%s\n' "$1"; exit 1
           fi
         }
 

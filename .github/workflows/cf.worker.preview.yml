@@ -1,0 +1,110 @@
+name: Preview Cloudflare Worker
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        description: 'Base worker name; the preview worker is <app>-pr-<N>'
+        type: string
+        required: true
+      domain:
+        description: 'Base domain for previews; the URL is pr-<N>.<domain>'
+        type: string
+        required: true
+      cfZone:
+        description: 'Cloudflare zone ID for <domain>'
+        type: string
+        required: true
+      cwd:
+        type: string
+        required: false
+        default: '.'
+      build:
+        type: string
+        required: false
+        default: 'pnpm build'
+      node:
+        type: string
+        required: false
+        default: ''
+      pnpm:
+        type: string
+        required: false
+        default: ''
+      infisicalProject:
+        type: string
+        required: true
+      infisicalEnv:
+        type: string
+        required: true
+      infisicalPath:
+        type: string
+        required: true
+      infisicalIdentity:
+        type: string
+        required: true
+      infisicalAudience:
+        type: string
+        required: false
+        default: 'https://github.com/gingur'
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/cf.worker.deploy.yml
+    with:
+      env: preview
+      worker: ${{ inputs.app }}-pr-${{ github.event.pull_request.number }}
+      cwd: ${{ inputs.cwd }}
+      build: ${{ inputs.build }}
+      node: ${{ inputs.node }}
+      pnpm: ${{ inputs.pnpm }}
+      infisicalProject: ${{ inputs.infisicalProject }}
+      infisicalEnv: ${{ inputs.infisicalEnv }}
+      infisicalPath: ${{ inputs.infisicalPath }}
+      infisicalIdentity: ${{ inputs.infisicalIdentity }}
+      infisicalAudience: ${{ inputs.infisicalAudience }}
+    secrets: inherit
+
+  domain:
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      WORKER: ${{ inputs.app }}-pr-${{ github.event.pull_request.number }}
+      HOST: pr-${{ github.event.pull_request.number }}.${{ inputs.domain }}
+    steps:
+      - name: Fetch CF credentials
+        uses: gingur/devkit/actions/infisical.secrets.fetch@main
+        with:
+          identity: ${{ inputs.infisicalIdentity }}
+          audience: ${{ inputs.infisicalAudience }}
+          project: ${{ inputs.infisicalProject }}
+          env: ${{ inputs.infisicalEnv }}
+          path: ${{ inputs.infisicalPath }}
+
+      - name: Attach custom domain
+        uses: gingur/devkit/actions/cf.worker.domain@main
+        with:
+          mode: attach
+          token: ${{ env.CF_API_TOKEN }}
+          account: ${{ env.CF_ACCOUNT_ID }}
+          zone: ${{ inputs.cfZone }}
+          hostname: ${{ env.HOST }}
+          service: ${{ env.WORKER }}
+
+      - name: Comment preview URL
+        uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
+        with:
+          header: cf-preview
+          message: |
+            🔎 **Preview deployed** → https://${{ env.HOST }}
+
+            Worker `${{ env.WORKER }}` · updates on each push · removed when this PR closes.

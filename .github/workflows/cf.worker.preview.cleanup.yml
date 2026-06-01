@@ -1,0 +1,81 @@
+name: Cleanup Cloudflare Worker preview
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        type: string
+        required: true
+      domain:
+        type: string
+        required: true
+      cfZone:
+        type: string
+        required: true
+      cwd:
+        type: string
+        required: false
+        default: '.'
+      infisicalProject:
+        type: string
+        required: true
+      infisicalEnv:
+        type: string
+        required: true
+      infisicalPath:
+        type: string
+        required: true
+      infisicalIdentity:
+        type: string
+        required: true
+      infisicalAudience:
+        type: string
+        required: false
+        default: 'https://github.com/gingur'
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    env:
+      WORKER: ${{ inputs.app }}-pr-${{ github.event.pull_request.number }}
+      HOST: pr-${{ github.event.pull_request.number }}.${{ inputs.domain }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Fetch CF credentials
+        uses: gingur/devkit/actions/infisical.secrets.fetch@main
+        with:
+          identity: ${{ inputs.infisicalIdentity }}
+          audience: ${{ inputs.infisicalAudience }}
+          project: ${{ inputs.infisicalProject }}
+          env: ${{ inputs.infisicalEnv }}
+          path: ${{ inputs.infisicalPath }}
+
+      - name: Detach custom domain
+        uses: gingur/devkit/actions/cf.worker.domain@main
+        with:
+          mode: detach
+          token: ${{ env.CF_API_TOKEN }}
+          account: ${{ env.CF_ACCOUNT_ID }}
+          zone: ${{ inputs.cfZone }}
+          hostname: ${{ env.HOST }}
+
+      - name: Delete preview worker
+        uses: gingur/devkit/actions/cf.worker.deploy@main
+        with:
+          cwd: ${{ inputs.cwd }}
+          token: ${{ env.CF_API_TOKEN }}
+          account: ${{ env.CF_ACCOUNT_ID }}
+          command: delete
+          worker: ${{ env.WORKER }}
+
+      - name: Remove preview comment
+        uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
+        with:
+          header: cf-preview
+          delete: true

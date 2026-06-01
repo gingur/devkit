@@ -73,6 +73,9 @@ jobs:
   domain:
     needs: deploy
     runs-on: ubuntu-latest
+    # Same GitHub Environment as the deploy job, so the whole preview lifecycle
+    # authenticates to Infisical under one OIDC subject: ...:environment:preview.
+    environment: preview
     permissions:
       contents: read
       id-token: write

@@ -1,0 +1,81 @@
+name: Rollback Cloudflare Worker
+
+on:
+  workflow_call:
+    inputs:
+      env:
+        description: 'Deployment target: production | preview. Validated by case guard; sets the GitHub Environment for this job and the wrangler --env.'
+        type: string
+        required: true
+      version:
+        description: 'Cloudflare version UUID to roll back to. Empty rolls back to the immediately-previous version.'
+        type: string
+        required: false
+        default: ''
+      cwd:
+        description: 'Directory containing wrangler.toml'
+        type: string
+        required: false
+        default: '.'
+      worker:
+        description: 'Override the worker name (wrangler --name). Empty uses the config name.'
+        type: string
+        required: false
+        default: ''
+      infisicalProject:
+        description: 'Infisical project slug (e.g., gingur-7xjq)'
+        type: string
+        required: true
+      infisicalEnv:
+        description: 'Infisical environment slug (e.g., production)'
+        type: string
+        required: true
+      infisicalPath:
+        description: 'Infisical secret folder path (e.g., /troyrhinehart)'
+        type: string
+        required: true
+      infisicalIdentity:
+        description: 'Infisical machine identity UUID with OIDC trust for this repo'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env }}
+    steps:
+      - name: Validate environment input
+        shell: bash
+        run: |
+          case "${{ inputs.env }}" in
+            production|preview) ;;
+            *)
+              echo "::error::environment must be one of: production, preview (got: '${{ inputs.env }}')"
+              exit 1
+              ;;
+          esac
+
+      - uses: actions/checkout@v6
+
+      # CF_API_TOKEN / CF_ACCOUNT_ID live only in Infisical (single source of truth).
+      - name: Fetch CF credentials
+        uses: gingur/devkit/actions/infisical.secrets.fetch@main
+        with:
+          identity: ${{ inputs.infisicalIdentity }}
+          project: ${{ inputs.infisicalProject }}
+          env: ${{ inputs.infisicalEnv }}
+          path: ${{ inputs.infisicalPath }}
+
+      - name: Rollback
+        uses: gingur/devkit/actions/cf.worker.rollback@main
+        with:
+          cwd: ${{ inputs.cwd }}
+          env: ${{ inputs.env }}
+          worker: ${{ inputs.worker }}
+          version: ${{ inputs.version }}
+          token: ${{ env.CF_API_TOKEN }}
+          account: ${{ env.CF_ACCOUNT_ID }}

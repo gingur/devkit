@@ -118,6 +118,26 @@ When rotating a Cloudflare API token (annual, or on compromise / personnel chang
 
 > During an incident, this is the runbook: rotate in Infisical (step 2), then revoke at Cloudflare (step 4). Everything else follows automatically.
 
+## Reusable workflows reference
+
+| Goal | Call |
+|---|---|
+| Verify (lint + typecheck + test) on PR | `gingur/devkit/.github/workflows/node.verify.yml@main` |
+| Deploy to production on push | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main` |
+| Per-PR preview deploy | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main` |
+| Tear down preview on PR close | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
+| Roll back production to a prior version (manual) | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main` |
+
+### Required permissions
+
+| Workflow | `contents` | `id-token` | `pull-requests` |
+|---|---|---|---|
+| `node.verify` | `read` | — | — |
+| `cf.worker.deploy` | `read` | `write` | `write` (records version on source PR) |
+| `cf.worker.preview` | `read` | `write` | `write` |
+| `cf.worker.preview.cleanup` | `read` | `write` | `write` |
+| `cf.worker.rollback` | `read` | `write` | — |
+
 ## PR previews
 
 Each PR gets an immutable masked preview at `https://pr-<N>.<domain>`, redeployed on
@@ -198,3 +218,93 @@ jobs:
 > above. Reusing the production identity makes the credential fetch fail with
 > `403 Access denied: OIDC subject not allowed`. This keeps the production identity's
 > trust narrow (least privilege) rather than broadening it to accept PR contexts.
+
+## Rolling back
+
+Production deploys are versioned by Cloudflare. To revert, dispatch a rollback
+workflow with the target version ID (or leave it blank to roll back to the
+immediately-previous version).
+
+### Finding the version ID
+
+Every production deploy posts a sticky comment to its **source PR** recording the
+version it produced, plus a one-click GitHub-UI link and a CLI command to roll back
+to it. Because PRs are squash-merged, your PR list doubles as a deploy index: open
+the PR you want to return to and use its rollback links.
+
+If a PR comment is missing (a direct push, or a version predating this feature),
+list versions in CI with the `cf.worker.versions` action, or use
+`wrangler versions list` locally / the Cloudflare dashboard.
+
+### Consumer workflow (copy-paste)
+
+devkit ships the rollback as a `workflow_call` reusable. Add a thin
+`workflow_dispatch` wrapper in your repo so the "Run workflow" form gives you an
+`env` dropdown and a free-text version field:
+
+````yaml
+# .github/workflows/rollback.yml
+name: Rollback
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Target environment
+        type: choice
+        options: [production, preview]
+        default: production
+      version:
+        description: Cloudflare version UUID (blank = previous version)
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  rollback:
+    uses: gingur/devkit/.github/workflows/cf.worker.rollback.yml@main
+    with:
+      env: ${{ inputs.env }}
+      version: ${{ inputs.version }}
+      infisicalProject: <your-project-slug>
+      infisicalEnv: production
+      infisicalPath: <your-secret-path>
+      infisicalIdentity: <your-identity-uuid>
+    secrets: inherit
+````
+
+> GitHub does not support pre-filling the dispatch form via URL or generating its
+> dropdown from live data, so the version field is free text — paste the UUID from
+> the PR comment. A genuinely in-browser version picker is possible via
+> [`boasiHQ/interactive-inputs`](https://github.com/boasiHQ/interactive-inputs)
+> (it pauses the run behind an ngrok tunnel to the runner), but it adds an ngrok
+> secret, a public tunnel on the credentialed rollback path, and billed idle
+> minutes while it waits for a human — not adopted here.
+
+### Triggering the rollback
+
+Two equivalent ways — both drive the same `workflow_dispatch` wrapper:
+
+- **GitHub UI** — open the wrapper's page at
+  `https://github.com/<owner>/<repo>/actions/workflows/rollback.yml`, click
+  **Run workflow ▸**, pick `env`, paste the version UUID, and run. The deploy
+  comment links straight to this page. (GitHub can't deep-link to a pre-filled
+  form, so you still paste the UUID — but the form itself is fully UI-driven.)
+- **CLI** — `gh workflow run rollback.yml -f env=production -f version=<uuid>`.
+
+> The version-record comment builds its UI link and CLI command from the wrapper
+> filename, which it assumes is `rollback.yml`. If you name your wrapper something
+> else, pass `rollbackWorkflow: <your-file>.yml` to `cf.worker.deploy.yml` so the
+> comment points at the right workflow.
+
+### Manual fallback
+
+From a checkout of the consumer repo with `CLOUDFLARE_API_TOKEN` /
+`CLOUDFLARE_ACCOUNT_ID` set:
+
+```bash
+wrangler versions list --env production
+wrangler rollback <version-id> --env production --message "manual rollback"
+```

@@ -25,10 +25,16 @@ inputs:
     required: false
     default: 'deploy'
 
+outputs:
+  versionId:
+    description: 'Cloudflare version UUID from this deploy, parsed from wrangler output. Empty if not found.'
+    value: ${{ steps.capture.outputs.versionId }}
+
 runs:
   using: 'composite'
   steps:
     - name: Deploy
+      id: deploy
       uses: cloudflare/wrangler-action@v4
       with:
         apiToken: ${{ inputs.token }}
@@ -36,3 +42,18 @@ runs:
         workingDirectory: ${{ inputs.cwd }}
         environment: ${{ inputs.env }}
         command: ${{ inputs.worker == '' && inputs.command || format('{0} --name {1}', inputs.command, inputs.worker) }}
+
+    - name: Capture version id
+      id: capture
+      shell: bash
+      env:
+        OUT: ${{ steps.deploy.outputs.command-output }}
+      run: |
+        set -euo pipefail
+        vid=$(printf '%s' "$OUT" | grep -iE 'Version ID' | grep -oiE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -n1 || true)
+        echo "versionId=${vid}" >> "$GITHUB_OUTPUT"
+        if [ -n "$vid" ]; then
+          echo "Captured version id: $vid"
+        else
+          echo "::warning::No version id found in deploy output; PR version-record will be skipped."
+        fi

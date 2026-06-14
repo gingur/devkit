@@ -137,6 +137,7 @@ What a consumer repo (e.g. a site deployed via devkit) must follow.
 | Deploy to production on push | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main` |
 | Per-PR preview deploy | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main` |
 | Tear down preview on PR close | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
+| Roll back production to a prior version (manual dispatch) | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main` |
 
 Pin to `@main` (the gingur consumer convention).
 
@@ -144,6 +145,9 @@ Pin to `@main` (the gingur consumer convention).
 
 - Deploy / preview / cleanup jobs need `contents: read` + `id-token: write` (OIDC).
 - Preview / cleanup additionally need `pull-requests: write` (sticky comment).
+- **Production deploy** also needs `pull-requests: write` — it records the deployed
+  version on the source PR (sticky comment).
+- Rollback (manual dispatch) needs `contents: read` + `id-token: write`.
 
 ### `wrangler.toml`
 

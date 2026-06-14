@@ -48,6 +48,11 @@ on:
         description: 'Infisical machine identity UUID with OIDC trust for this repo'
         type: string
         required: true
+      rollbackWorkflow:
+        description: "Filename of the consumer's workflow_dispatch rollback wrapper. Used only to build the rollback link/command in the PR version-record comment."
+        type: string
+        required: false
+        default: 'rollback.yml'
 
 permissions:
   contents: read
@@ -137,7 +142,10 @@ jobs:
           message: |
             🚀 **Deployed to production** as version `${{ steps.deploy.outputs.versionId }}`
 
-            Roll back to this version:
-            ```
-            gh workflow run cf.worker.rollback.yml -f env=production -f version=${{ steps.deploy.outputs.versionId }}
-            ```
+            **Roll back to this version**
+
+            - **GitHub UI** → [Run the rollback workflow](${{ github.server_url }}/${{ github.repository }}/actions/workflows/${{ inputs.rollbackWorkflow }}) → **Run workflow ▸** with `env: production` and `version: ${{ steps.deploy.outputs.versionId }}`
+            - **CLI** →
+              ```
+              gh workflow run ${{ inputs.rollbackWorkflow }} -f env=production -f version=${{ steps.deploy.outputs.versionId }}
+              ```

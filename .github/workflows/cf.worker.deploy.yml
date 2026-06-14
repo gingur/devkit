@@ -140,12 +140,29 @@ jobs:
           header: cf-deploy
           number: ${{ steps.pr.outputs.number }}
           message: |
-            🚀 **Deployed to production** as version `${{ steps.deploy.outputs.versionId }}`
+            ## 🚀 Deployed
 
-            **Roll back to this version**
+            ### Version
 
-            - **GitHub UI** → [Run the rollback workflow](${{ github.server_url }}/${{ github.repository }}/actions/workflows/${{ inputs.rollbackWorkflow }}) → **Run workflow ▸** with `env: production` and `version: ${{ steps.deploy.outputs.versionId }}`
-            - **CLI** →
-              ```
-              gh workflow run ${{ inputs.rollbackWorkflow }} -f env=production -f version=${{ steps.deploy.outputs.versionId }}
-              ```
+            ```text
+            ${{ steps.deploy.outputs.versionId }}
+            ```
+
+            ### Rollback
+
+            <details>
+            <summary>Instructions</summary>
+
+            **CLI**
+
+            ```bash
+            gh workflow run ${{ inputs.rollbackWorkflow }} -f version=${{ steps.deploy.outputs.versionId }}
+            ```
+
+            **UI**
+
+            1. Actions ▸ [Rollback](${{ github.server_url }}/${{ github.repository }}/actions/workflows/${{ inputs.rollbackWorkflow }})
+            2. Run workflow
+            3. Paste version
+
+            </details>

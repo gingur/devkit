@@ -3,10 +3,6 @@ name: Rollback Cloudflare Worker
 on:
   workflow_call:
     inputs:
-      env:
-        description: 'Deployment target: production | preview. Validated by case guard; sets the GitHub Environment for this job and the wrangler --env.'
-        type: string
-        required: true
       version:
         description: 'Cloudflare version UUID to roll back to. Empty rolls back to the immediately-previous version.'
         type: string
@@ -46,19 +42,8 @@ permissions:
 jobs:
   rollback:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.env }}
+    environment: production
     steps:
-      - name: Validate environment input
-        shell: bash
-        run: |
-          case "${{ inputs.env }}" in
-            production|preview) ;;
-            *)
-              echo "::error::environment must be one of: production, preview (got: '${{ inputs.env }}')"
-              exit 1
-              ;;
-          esac
-
       - uses: actions/checkout@v6
 
       # CF_API_TOKEN / CF_ACCOUNT_ID live only in Infisical (single source of truth).
@@ -74,7 +59,7 @@ jobs:
         uses: gingur/devkit/actions/cf.worker.rollback@main
         with:
           cwd: ${{ inputs.cwd }}
-          env: ${{ inputs.env }}
+          env: production
           worker: ${{ inputs.worker }}
           version: ${{ inputs.version }}
           token: ${{ env.CF_API_TOKEN }}

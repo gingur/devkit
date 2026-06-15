@@ -20,7 +20,7 @@ jobs:
   verify:
     uses: gingur/devkit/.github/workflows/node.verify.yml@main
     with:
-      node: "20"
+      node: '20'
 ```
 
 **Composite action:**
@@ -44,12 +44,12 @@ Add devkit as a dev dependency and re-export the config you need:
 export { default } from '@gingur/devkit/eslint';
 ```
 
-| Export | File | Bring your own |
-|---|---|---|
-| `@gingur/devkit/eslint` | `eslint.config.mjs` | `eslint`, `@eslint/js`, `typescript-eslint`, `typescript` |
-| `@gingur/devkit/prettier` | `prettier.config.mjs` | `prettier` |
-| `@gingur/devkit/lint-staged` | `lint-staged.config.js` | `prettier`, `eslint` |
-| `@gingur/devkit/tsconfig` | `tsconfig.base.json` | `typescript` |
+| Export                       | File                    | Bring your own                                            |
+| ---------------------------- | ----------------------- | --------------------------------------------------------- |
+| `@gingur/devkit/eslint`      | `eslint.config.mjs`     | `eslint`, `@eslint/js`, `typescript-eslint`, `typescript` |
+| `@gingur/devkit/prettier`    | `prettier.config.mjs`   | `prettier`                                                |
+| `@gingur/devkit/lint-staged` | `lint-staged.config.js` | `prettier`, `eslint`                                      |
+| `@gingur/devkit/tsconfig`    | `tsconfig.base.json`    | `typescript`                                              |
 
 These tools are **not** bundled — the configs reference them but consumers install
 them. They are declared as `peerDependencies` (so your package manager warns when
@@ -87,7 +87,7 @@ Pin by **trust in who can move the tag**:
   uses: marocchino/sticky-pull-request-comment@<sha> # v3.0.4  (individual maintainer)
   ```
 
-The test: *who can move the tag?* A trusted org → tag. One person's account → SHA. To resolve a community action's tag to its commit:
+The test: _who can move the tag?_ A trusted org → tag. One person's account → SHA. To resolve a community action's tag to its commit:
 
 ```bash
 gh api repos/<owner>/<repo>/commits/<tag> --jq .sha
@@ -97,11 +97,11 @@ gh api repos/<owner>/<repo>/commits/<tag> --jq .sha
 
 Three names, one CI surface:
 
-| Name | Where | Notes |
-|---|---|---|
-| `production` | CI | The deployed instance. |
-| `preview` | CI | PR / branch previews. Same shape, separate target. |
-| `local` | Developer machine | Never appears in CI. Outside the workflow input enum. |
+| Name         | Where             | Notes                                                 |
+| ------------ | ----------------- | ----------------------------------------------------- |
+| `production` | CI                | The deployed instance.                                |
+| `preview`    | CI                | PR / branch previews. Same shape, separate target.    |
+| `local`      | Developer machine | Never appears in CI. Outside the workflow input enum. |
 
 Reusable workflows and actions only accept `production | preview` for the `environment` input. `local` is a convention for human developers — it exists to give that mode a name without ever leaking into CI.
 
@@ -118,25 +118,71 @@ When rotating a Cloudflare API token (annual, or on compromise / personnel chang
 
 > During an incident, this is the runbook: rotate in Infisical (step 2), then revoke at Cloudflare (step 4). Everything else follows automatically.
 
+## Secret scanning
+
+`infisical scan` (gitleaks engine, fully local — no auth) gates secrets in two places:
+
+- **CI** — the `infisical.secrets.scan.yml` reusable workflow scans each PR's commit
+  range and fails the job on any finding.
+- **Pre-commit** — a husky hook runs `infisical scan git-changes --staged`, catching
+  secrets before they reach history (locally; bypassable with `--no-verify`, which CI
+  backstops).
+
+Both use one shared config, `configs/infisical-scan.toml` (gitleaks defaults +
+tunable allowlist).
+
+### CI (consumer)
+
+```yaml
+# .github/workflows/infisical.secrets.scan.yml
+name: Secret scan
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+jobs:
+  scan:
+    uses: gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main
+```
+
+### Pre-commit (consumer)
+
+Requires the `infisical` CLI on the developer's PATH.
+
+```jsonc
+// package.json
+"scripts": { "prepare": "husky" },
+"devDependencies": { "husky": "^9", "@gingur/devkit": "github:gingur/devkit#main" }
+```
+
+```bash
+# .husky/pre-commit
+npx lint-staged
+infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs/infisical-scan.toml --redact --no-color
+```
+
 ## Reusable workflows reference
 
-| Goal | Call |
-|---|---|
-| Verify (lint + typecheck + test) on PR | `gingur/devkit/.github/workflows/node.verify.yml@main` |
-| Deploy to production on push | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main` |
-| Per-PR preview deploy | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main` |
-| Tear down preview on PR close | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
-| Roll back production to a prior version (manual) | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main` |
+| Goal                                             | Call                                                                 |
+| ------------------------------------------------ | -------------------------------------------------------------------- |
+| Verify (lint + typecheck + test) on PR           | `gingur/devkit/.github/workflows/node.verify.yml@main`               |
+| Deploy to production on push                     | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main`          |
+| Per-PR preview deploy                            | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main`         |
+| Tear down preview on PR close                    | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
+| Roll back production to a prior version (manual) | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main`        |
+| Scan a PR's commits for leaked secrets           | `gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main`    |
 
 ### Required permissions
 
-| Workflow | `contents` | `id-token` | `pull-requests` |
-|---|---|---|---|
-| `node.verify` | `read` | — | — |
-| `cf.worker.deploy` | `read` | `write` | `write` (records version on source PR) |
-| `cf.worker.preview` | `read` | `write` | `write` |
-| `cf.worker.preview.cleanup` | `read` | `write` | `write` |
-| `cf.worker.rollback` | `read` | `write` | — |
+| Workflow                    | `contents` | `id-token` | `pull-requests`                        |
+| --------------------------- | ---------- | ---------- | -------------------------------------- |
+| `node.verify`               | `read`     | —          | —                                      |
+| `cf.worker.deploy`          | `read`     | `write`    | `write` (records version on source PR) |
+| `cf.worker.preview`         | `read`     | `write`    | `write`                                |
+| `cf.worker.preview.cleanup` | `read`     | `write`    | `write`                                |
+| `cf.worker.rollback`        | `read`     | `write`    | —                                      |
+| `infisical.secrets.scan`    | `read`     | —          | —                                      |
 
 ## PR previews
 
@@ -175,9 +221,9 @@ jobs:
       domain: <your-domain>
       cfZone: <zone-id>
       infisicalProject: <project-slug>
-      infisicalEnv: <env-slug>     # where the CF token lives (often "production")
+      infisicalEnv: <env-slug> # where the CF token lives (often "production")
       infisicalPath: /<app>
-      infisicalIdentity: <preview-identity-uuid>   # see note below — NOT the production identity
+      infisicalIdentity: <preview-identity-uuid> # see note below — NOT the production identity
     secrets: inherit
 ```
 
@@ -201,7 +247,7 @@ jobs:
       infisicalProject: <project-slug>
       infisicalEnv: <env-slug>
       infisicalPath: /<app>
-      infisicalIdentity: <preview-identity-uuid>   # see note below — NOT the production identity
+      infisicalIdentity: <preview-identity-uuid> # see note below — NOT the production identity
     secrets: inherit
 ```
 
@@ -242,7 +288,7 @@ devkit ships the rollback as a `workflow_call` reusable. Add a thin
 `workflow_dispatch` wrapper in your repo so the "Run workflow" form gives you an
 `env` dropdown and a free-text version field:
 
-````yaml
+```yaml
 # .github/workflows/rollback.yml
 name: Rollback
 on:
@@ -273,7 +319,7 @@ jobs:
       infisicalPath: <your-secret-path>
       infisicalIdentity: <your-identity-uuid>
     secrets: inherit
-````
+```
 
 > GitHub does not support pre-filling the dispatch form via URL or generating its
 > dropdown from live data, so the version field is free text — paste the UUID from

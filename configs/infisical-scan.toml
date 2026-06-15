@@ -1,0 +1,17 @@
+# configs/infisical-scan.toml
+# Shared secret-scan config for gingur repos — used by CI and the pre-commit hook.
+# Engine: gitleaks (vendored by `infisical scan`). Single source of truth for
+# detection rules + allowlist.
+
+title = "gingur secret-scan config"
+
+[extend]
+# Inherit gitleaks' default ruleset (already allowlists canonical EXAMPLE keys).
+useDefault = true
+
+# Add entries here only when a REAL false positive surfaces (tune as-you-go).
+# [[rules.allowlist]] or a top-level [allowlist] with regexes/paths/stopwords.
+# [allowlist]
+# description = "gingur shared allowlist"
+# regexes = []
+# paths = []

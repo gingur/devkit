@@ -13,13 +13,13 @@ sessions and human contributors follow these. Human-facing usage docs live in
 
 ## Naming
 
-A 3-tier identifier system. Pick the tier by *what kind of thing* you're naming.
+A 3-tier identifier system. Pick the tier by _what kind of thing_ you're naming.
 
-| Tier | Convention | Examples |
-|---|---|---|
-| **File names** (workflows, action dirs) | `lowercase.dot.notation` | `cf.worker.preview.yml`, `node.verify.yml`, `actions/infisical.secrets.fetch/` |
-| **Identifiers** (inputs, job ids, step ids, outputs) | `camelCase`, single word when possible | `deploy`, `worker`, `domain`, `cfZone` |
-| **Env vars & secrets** | `SCREAMING_SNAKE_CASE` | `CF_API_TOKEN`, `CF_ACCOUNT_ID` |
+| Tier                                                 | Convention                             | Examples                                                                                                     |
+| ---------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **File names** (workflows, action dirs)              | `lowercase.dot.notation`               | `cf.worker.preview.yml`, `node.verify.yml`, `actions/infisical.secrets.fetch/`, `infisical.secrets.scan.yml` |
+| **Identifiers** (inputs, job ids, step ids, outputs) | `camelCase`, single word when possible | `deploy`, `worker`, `domain`, `cfZone`                                                                       |
+| **Env vars & secrets**                               | `SCREAMING_SNAKE_CASE`                 | `CF_API_TOKEN`, `CF_ACCOUNT_ID`                                                                              |
 
 ### File names: `<provider>.<service>.<action…>`
 
@@ -34,7 +34,7 @@ takes extra dots for compound lifecycles (4+: `cf.worker.preview.cleanup`).
 - **service** — the resource within the provider (`worker`, `secrets`). **Omit**
   when the provider has one obvious surface: `node.verify`, `node.setup`.
 - **action** — the operation, named for **intent** not trigger (`deploy`,
-  `preview`, `verify`, `setup`, `fetch`, `domain`). *Not* `ci` (that's a trigger,
+  `preview`, `verify`, `setup`, `fetch`, `domain`). _Not_ `ci` (that's a trigger,
   not an intent — it lints+typechecks+tests, so it's `verify`).
 - **Compound lifecycles extend with more dots, not hyphens**:
   `cf.worker.preview.cleanup`, never `cf.worker.preview-cleanup`.
@@ -107,7 +107,7 @@ Pin by **trust in who can move the tag**:
 - **Third-party from an individual / community maintainer** (a personal account,
   not an org — e.g. `marocchino`) → **full commit SHA** + trailing version comment.
 
-The test: *who can move the tag?* A trusted org → tag; one person's account → SHA.
+The test: _who can move the tag?_ A trusted org → tag; one person's account → SHA.
 See [README → Action pinning](./README.md#action-pinning) for examples and the
 re-pin command. **A repeatedly-used third-party action lives in one place** — wrap
 it in a composite (e.g. `infisical.secrets.fetch` wraps `Infisical/secrets-action`)
@@ -131,13 +131,14 @@ What a consumer repo (e.g. a site deployed via devkit) must follow.
 
 ### Calling reusable workflows
 
-| Goal | Call |
-|---|---|
-| Verify (lint+typecheck+test) on PR | `gingur/devkit/.github/workflows/node.verify.yml@main` |
-| Deploy to production on push | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main` |
-| Per-PR preview deploy | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main` |
-| Tear down preview on PR close | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
-| Roll back production to a prior version (manual dispatch) | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main` |
+| Goal                                                      | Call                                                                 |
+| --------------------------------------------------------- | -------------------------------------------------------------------- |
+| Verify (lint+typecheck+test) on PR                        | `gingur/devkit/.github/workflows/node.verify.yml@main`               |
+| Deploy to production on push                              | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main`          |
+| Per-PR preview deploy                                     | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main`         |
+| Tear down preview on PR close                             | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
+| Roll back production to a prior version (manual dispatch) | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main`        |
+| Scan a PR's commits for leaked secrets                    | `gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main`    |
 
 Pin to `@main` (the gingur consumer convention).
 
@@ -184,3 +185,10 @@ name = "<app>-preview"   # placeholder; overridden per-PR by --name, no custom r
 
 Copy-paste preview + cleanup workflow examples live in
 [README → PR previews](./README.md).
+
+### Pre-commit (husky)
+
+Consumers wire a husky `pre-commit` hook that runs `lint-staged` and
+`infisical scan git-changes --staged` (shared `configs/infisical-scan.toml`).
+Requires the `infisical` CLI on PATH. CI (`infisical.secrets.scan.yml`) is the
+enforced backstop since `--no-verify` skips the hook.

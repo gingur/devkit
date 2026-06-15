@@ -3,16 +3,33 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": {
-    "./tsconfig":    "./configs/tsconfig.base.json",
-    "./eslint":      "./configs/eslint.config.mjs",
-    "./prettier":    "./configs/prettier.config.mjs",
-    "./lint-staged": "./configs/lint-staged.config.js"
+  "scripts": {
+    "prepare": "husky"
   },
-  "files": ["configs", "actions", ".github"],
+  "exports": {
+    "./tsconfig": "./configs/tsconfig.base.json",
+    "./eslint": "./configs/eslint.config.mjs",
+    "./prettier": "./configs/prettier.config.mjs",
+    "./lint-staged": "./configs/lint-staged.config.js",
+    "./infisical-scan": "./configs/infisical-scan.toml"
+  },
+  "files": [
+    "configs",
+    "actions",
+    ".github"
+  ],
   "peerDependencies": {
     "@eslint/js": "^9",
     "eslint": "^9",
+    "prettier": "^3",
+    "typescript": "^5",
+    "typescript-eslint": "^8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9",
+    "eslint": "^9",
+    "husky": "^9",
+    "lint-staged": "^16",
     "prettier": "^3",
     "typescript": "^5",
     "typescript-eslint": "^8"

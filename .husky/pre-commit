@@ -1,0 +1,2 @@
+npx lint-staged
+infisical scan git-changes --staged --config configs/infisical-scan.toml --redact --no-color

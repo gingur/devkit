@@ -172,6 +172,7 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 | Tear down preview on PR close                    | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
 | Roll back production to a prior version (manual) | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main`        |
 | Scan a PR's commits for leaked secrets           | `gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main`    |
+| Planning agent turn on issue assignment          | `gingur/devkit/.github/workflows/claude.plan.yml@main`               |
 
 ### Required permissions
 
@@ -183,6 +184,7 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 | `cf.worker.preview.cleanup` | `read`     | `write`    | `write`                                |
 | `cf.worker.rollback`        | `read`     | `write`    | —                                      |
 | `infisical.secrets.scan`    | `read`     | —          | —                                      |
+| `claude.plan`               | `read`     | `write`    | — (requires `issues: write` instead)   |
 
 ## PR previews
 
@@ -354,3 +356,72 @@ From a checkout of the consumer repo with `CLOUDFLARE_API_TOKEN` /
 wrangler versions list --env production
 wrangler rollback <version-id> --env production --message "manual rollback"
 ```
+
+## claude.plan — issue-driven planning agent
+
+Assign an issue to the machine user (`gingur-bot`) and a Claude agent takes one
+**planning turn**: it studies the ask (repo code, issue thread, the web),
+posts a plan as a comment, and hands the issue back by re-assigning you.
+Comment your approval or corrections and re-assign the bot; on an approving
+turn it creates the plan's tasks as sub-issues labeled `claude-task`. Every
+turn ends with a summary comment and the issue assigned back to you — on
+failure, a comment carries the run link instead. Full design rationale:
+[design spec](https://gist.github.com/gingur/db3b2def680edfc42e93b9275497b0a9).
+
+- **Turn-taking:** assignment is the baton. Bot assigned = agent's turn;
+  you assigned = your turn. The agent never assigns anyone; the workflow
+  re-assigns you unconditionally (`if: always()`), even when the run fails.
+- **Stateless turns:** each run re-derives state from the issue (plan comment
+  present? sub-issues present? operator comments since the bot's last one?)
+  and does the next right thing — propose, revise, materialize, or reconcile.
+  Re-running is always safe. To skip the review gate for small asks, write
+  "no review needed, create the tasks directly" in the issue body.
+- **Billing:** runs authenticate with a Claude Max subscription OAuth token
+  (`claude setup-token`), not API-key billing. Quota is shared with
+  interactive Claude Code use; `turns` bounds the worst case per run.
+- **Auth:** no GitHub secrets. `infisical.secrets.fetch` (OIDC) pulls
+  `CLAUDE_CODE_OAUTH_TOKEN` and `GH_BOT_PAT` from Infisical project `gingur`,
+  env `prod`, path `/_shared/agents`. The bot PAT authors all agent-created
+  issues/comments so they can trigger downstream workflows (the default
+  `GITHUB_TOKEN` is suppressed from triggering; a PAT is not).
+
+### Consumer workflow (copy-paste)
+
+```yaml
+# .github/workflows/plan.yml
+name: Plan
+on:
+  issues:
+    types: [assigned]
+
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+
+jobs:
+  plan:
+    uses: gingur/devkit/.github/workflows/claude.plan.yml@main
+    with:
+      infisicalIdentity: <machine identity UUID>
+```
+
+Requirements per consumer repo: `gingur-bot` invited as a collaborator with
+write; the Infisical identity's OIDC subject covers the repo; Issues enabled.
+In `devkit` itself the workflow self-triggers (no caller needed) and reads the
+identity from the `INFISICAL_IDENTITY` Actions variable.
+
+| Input               | Default           | Notes                                                    |
+| ------------------- | ----------------- | -------------------------------------------------------- |
+| `bot`               | `gingur-bot`      | machine-user login the trigger guards on                 |
+| `turns`             | `50`              | max agent turns per run (cost bound)                     |
+| `infisicalIdentity` | —                 | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)  |
+| `infisicalProject`  | `gingur`          | Infisical project slug                                   |
+| `infisicalEnv`      | `prod`            | Infisical environment slug                               |
+| `infisicalPath`     | `/_shared/agents` | folder holding the two secrets                           |
+| `runner`            | `ubuntu-latest`   | runner label                                             |
+
+**Scope note:** this workflow plans; it never implements. The implement
+workflow (triggering on `claude-task` issues) is a separate, future piece.
+This repo is public: the trigger requires issue *assignment*, which only
+collaborators can perform — do not add `pull_request`-family triggers here.

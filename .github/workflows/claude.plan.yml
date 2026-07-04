@@ -1,0 +1,100 @@
+name: Plan
+
+on:
+  issues:
+    types: [assigned]
+  workflow_call:
+    inputs:
+      bot:
+        description: 'Machine-user login that triggers a turn when assigned'
+        type: string
+        required: false
+        default: 'gingur-bot'
+      turns:
+        description: 'Max agent turns per run'
+        type: string
+        required: false
+        default: '50'
+      infisicalIdentity:
+        description: 'Infisical machine identity UUID with OIDC trust for this repo'
+        type: string
+        required: false
+        default: ''
+      infisicalProject:
+        description: 'Infisical project slug'
+        type: string
+        required: false
+        default: 'gingur'
+      infisicalEnv:
+        description: 'Infisical environment slug'
+        type: string
+        required: false
+        default: 'prod'
+      infisicalPath:
+        description: 'Infisical secret folder path'
+        type: string
+        required: false
+        default: '/_shared/agents'
+      runner:
+        description: 'Runner label'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+
+concurrency:
+  group: plan-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    if: github.event.assignee.login == (inputs.bot || 'gingur-bot')
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Secrets
+        uses: gingur/devkit/actions/infisical.secrets.fetch@main
+        with:
+          identity: ${{ inputs.infisicalIdentity || vars.INFISICAL_IDENTITY }}
+          project: ${{ inputs.infisicalProject || 'gingur' }}
+          env: ${{ inputs.infisicalEnv || 'prod' }}
+          path: ${{ inputs.infisicalPath || '/_shared/agents' }}
+
+      - name: Plan
+        uses: gingur/devkit/actions/claude.plan@main
+        with:
+          bot: ${{ inputs.bot || 'gingur-bot' }}
+          turns: ${{ inputs.turns || '50' }}
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          gh issue comment "$ISSUE" --repo "$REPO" --body "⚠️ **Planning turn failed.** See the run log: $RUN_URL
+
+          Fix the cause and re-assign the bot to retry — turns are safe to repeat."
+
+      - name: Return baton
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+          BOT: ${{ inputs.bot || 'gingur-bot' }}
+          OPERATOR: ${{ github.event.sender.login }}
+        shell: bash
+        run: |
+          gh issue edit "$ISSUE" --repo "$REPO" \
+            --remove-assignee "$BOT" --add-assignee "$OPERATOR"

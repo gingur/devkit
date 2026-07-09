@@ -73,7 +73,7 @@ jobs:
           && !startsWith(github.event.comment.body, '[hold]'))
         || (github.event.action == 'edited'
           && github.event.comment.user.login == (inputs.bot || 'gingur-bot')
-          && contains(github.event.comment.body, '<!-- claude:action-panel -->')
+          && startsWith(github.event.comment.body, '<!-- claude:action-panel -->')
           && contains(github.event.comment.body, '- [x] ')
           && (!contains(github.event.comment.body, '**Submit**')
             || contains(github.event.comment.body, '- [x] **Submit**'))))

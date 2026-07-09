@@ -90,7 +90,11 @@ runs:
           [[ -z "$id" ]] && continue
           newest=$id
           body=$(printf '%s' "$b64" | base64 -d)
-          if [[ "$body" == *"$marker"* ]]; then
+          # Anchored: a panel's body OPENS with the marker. A substring match
+          # would classify any comment merely quoting the marker (e.g. a plan
+          # describing how panels work) as a live panel — corrupting the sweep
+          # and wrongly suppressing the default panel.
+          if [[ "$body" == "$marker"* ]]; then
             panels+=("$id")
             bodies[$id]=$body
           fi

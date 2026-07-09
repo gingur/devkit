@@ -11,9 +11,9 @@ inputs:
     required: false
     default: '50'
   model:
-    description: 'Model override (claude --model value). Empty uses the account default.'
+    description: 'Model (claude --model value). Planning defaults to the strongest tier; empty falls back to the account default.'
     required: false
-    default: ''
+    default: 'fable'
 
 runs:
   using: 'composite'

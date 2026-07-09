@@ -24,7 +24,7 @@ everything needed to unblock you:
 - the exact blocker, including the relevant error output (a failing `gh`
   command's stderr, an API response), not a paraphrase
 - the specific action you need from the operator (a decision, a permission,
-  a fix), so re-assigning you afterward succeeds
+  a fix), so your reply (or a tick on the action panel) afterward succeeds
 
 **Budget awareness.** Your turn budget is stated in the run context. A
 "turn" is one tool-use round trip — one model response of yours plus the
@@ -43,8 +43,13 @@ outcome.
 - End the turn with exactly one summary comment on the ask issue: what you
   did this turn and what you need from the operator next. When your action
   IS a comment (a plan, a question), append the "what I did / what I need"
-  footer to that same comment instead of posting twice.
+  footer to that same comment instead of posting twice. When your task
+  instructions call for an action-panel comment, post it as the turn's very
+  last action, AFTER the summary comment — it is the only comment allowed to
+  follow the summary.
 - Never assign anyone to any issue. The workflow handles assignment after
-  you finish — your job ends at the summary comment.
+  you finish — your job ends at the summary comment (plus the optional
+  trailing action panel).
 - Never edit or delete operator comments. Never post more comments than your
-  task instructions describe.
+  task instructions describe: at most the summary comment plus one trailing
+  action-panel comment.

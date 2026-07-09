@@ -1,5 +1,5 @@
 name: 'Claude turn-end handoff'
-description: 'End an agent workflow turn: hand off to the operator (re-assign the issue from the bot) and, on any non-success status, post a failure comment that @mentions the operator. Uses github.token; requires issues: write in the calling job.'
+description: 'End an agent workflow turn: hand off to the operator (re-assign the issue from the bot), sweep action panels on success, and, on any non-success status, post a failure comment that @mentions the operator. Guarantee hierarchy: the handoff and failure comment run on github.token unconditionally, so they survive an Infisical outage; panels are best-effort — the default panel is posted with the bot PAT (GH_BOT_PAT from the job env) so wake can arm it, and is skipped when the PAT is absent. Requires issues: write in the calling job.'
 
 inputs:
   bot:
@@ -14,6 +14,10 @@ inputs:
   turn:
     description: 'Human word naming the turn kind for the comment text (e.g., Planning, Implementation)'
     required: true
+  panel:
+    description: 'Markdown body for the default action-panel comment posted on success. Empty posts nothing; suppressed when the agent posted its own panel this turn.'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -30,6 +34,71 @@ runs:
         gh issue edit "$ISSUE" --repo "$REPO" \
           --remove-assignee "$BOT" --add-assignee "$OPERATOR"
 
+    # Action panels are the operator's one-tap controls — at most one live per
+    # issue. Listing and neutralizing use github.token: PATCH keeps the original
+    # author, and GITHUB_TOKEN events never trigger workflows (wake additionally
+    # ignores bot-sender events and bodies without "- [x] "). Posting the
+    # default panel uses GH_BOT_PAT from the job env — the panel must be
+    # bot-authored or wake's edited-gate can never arm it — and is best-effort:
+    # no PAT (secrets fetch failed), no panel; operator replies still start
+    # turns. The neutralize sweep is the mechanical backstop behind the agent's
+    # semantic defusal — it guarantees no stale actionable surface survives
+    # even if the model forgot.
+    - name: Panels
+      if: inputs.status == 'success'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ISSUE: ${{ github.event.issue.number }}
+        REPO: ${{ github.repository }}
+        BOT: ${{ inputs.bot }}
+        PANEL: ${{ inputs.panel }}
+      shell: bash
+      run: |
+        marker='<!-- claude:action-panel -->'
+
+        # Bot comments in creation order, one "<id><TAB><base64 body>" per line.
+        list=$(gh api "repos/$REPO/issues/$ISSUE/comments" --paginate \
+          --jq '.[] | select(.user.login == env.BOT) | "\(.id)\t\(.body | @base64)"')
+
+        panels=()
+        newest=''
+        declare -A bodies
+        while IFS=$'\t' read -r id b64; do
+          [[ -z "$id" ]] && continue
+          newest=$id
+          body=$(printf '%s' "$b64" | base64 -d)
+          if [[ "$body" == *"$marker"* ]]; then
+            panels+=("$id")
+            bodies[$id]=$body
+          fi
+        done <<< "$list"
+
+        # Newest bot comment is itself an active panel ⇒ the agent posted its
+        # own this turn: keep it and suppress the default.
+        keep=''
+        if [[ ${#panels[@]} -gt 0 && "${panels[-1]}" == "$newest" ]]; then
+          keep=$newest
+        fi
+
+        for id in "${panels[@]}"; do
+          [[ "$id" == "$keep" ]] && continue
+          closed=$(printf '%s\n' "${bodies[$id]}" | tr -d '\r' | sed \
+            -e 's|<!-- claude:action-panel -->|<!-- claude:action-panel:done -->|' \
+            -e '/^- \[ \] /d' \
+            -e 's|^- \[x\] |✔ |')
+          gh api -X PATCH "repos/$REPO/issues/comments/$id" --silent \
+            -f body="$closed"$'\n\n_(panel closed)_'
+        done
+
+        if [[ -z "$keep" && -n "$PANEL" ]]; then
+          if [[ -n "${GH_BOT_PAT:-}" ]]; then
+            GH_TOKEN=$GH_BOT_PAT gh api "repos/$REPO/issues/$ISSUE/comments" --silent \
+              -f body="$marker"$'\n\n'"$PANEL"
+          else
+            echo 'GH_BOT_PAT absent — skipping the default action panel; replies still start turns'
+          fi
+        fi
+
     - name: Report failure
       if: inputs.status != 'success'
       env:
@@ -44,4 +113,4 @@ runs:
       run: |
         gh issue comment "$ISSUE" --repo "$REPO" --body "⚠️ @$OPERATOR **$TURN turn did not complete** (status: $STATUS). See the run log: $RUN_URL
 
-        Fix the cause and re-assign the bot to retry — turns are safe to repeat."
+        Fix the cause, then reply here (any reply starts a new turn) or re-assign the bot — turns are safe to repeat."

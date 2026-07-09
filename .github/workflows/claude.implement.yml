@@ -89,3 +89,5 @@ jobs:
           operator: ${{ github.event.sender.login != (inputs.bot || 'gingur-bot') && github.event.sender.login || github.repository_owner }}
           status: ${{ job.status }}
           turn: Implementation
+          panel: |
+            🎛️ **Your move** — reply with feedback to request changes (your reply starts my next turn automatically), or review and merge the PR. Prefix a comment with `[hold]` to comment without starting a turn.

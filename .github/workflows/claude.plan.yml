@@ -104,3 +104,8 @@ jobs:
           operator: ${{ github.event.sender.login != (inputs.bot || 'gingur-bot') && github.event.sender.login || github.repository_owner }}
           status: ${{ job.status }}
           turn: Planning
+          panel: |
+            🎛️ **Your move**
+            - [ ] **Approve** — tick to accept the plan; my next turn creates the tasks
+
+            Ticking the box is the only way to approve. Any reply is discussion — it starts a revise/answer turn automatically. Prefix a comment with `[hold]` to comment without starting a turn.

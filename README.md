@@ -176,6 +176,11 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 | Implementation agent turn on claude-task assignment | `gingur/devkit/.github/workflows/claude.implement.yml@main`          |
 | Start agent turns from trusted comments / ticks     | `gingur/devkit/.github/workflows/claude.wake.yml@main`               |
 
+> Deploy, rollback, verify, secret-scan, and the `claude.*` workflows accept an
+> optional `runner` input (a runner label, default `ubuntu-latest`). See
+> [Self-hosted runner (local)](#self-hosted-runner-local) for provisioning and
+> the routing policy — the preview workflows deliberately have no `runner` input.
+
 ### Required permissions
 
 | Workflow                    | `contents` | `id-token` | `pull-requests`                                                                  |
@@ -189,6 +194,119 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 | `claude.plan`               | `read`     | `write`    | — (requires `issues: write` instead)                                             |
 | `claude.implement`          | `read`     | `write`    | — (requires `issues: write`; pushes/PRs use the bot PAT, not the workflow token) |
 | `claude.wake`               | `read`     | `write`    | — (assigns via the bot PAT, not the workflow token)                              |
+
+## Self-hosted runner (local)
+
+Selected workflows can route to a self-hosted runner on a local machine via the
+`runner` input (see the note under the
+[reference table](#reusable-workflows-reference)). The runner connects
+**outbound-only** — HTTPS long-polling to GitHub — so it needs no inbound
+ports, no tunnel, and no public address.
+
+> The runner **label** `local` names where a job runs. It is unrelated to the
+> `local` **environment** in [Environments](#environments), which names a
+> developer-machine mode that never appears in CI.
+
+### Registration (per repo)
+
+Personal accounts have no org-level or shareable runners, so **one runner
+instance registers per repo**. Several instances can share the same machine —
+each in its own directory (e.g. `~/actions-runner/<repo>/`). Open the repo's
+**Settings → Actions → Runners → New self-hosted runner** page for the
+download + verify commands (they embed the current runner version and a fresh
+registration token), extract into the per-repo directory, then configure
+against the repo URL with the single custom label `local`:
+
+```bash
+mkdir -p ~/actions-runner/<repo> && cd ~/actions-runner/<repo>
+# download + extract the runner per the "New self-hosted runner" page, then:
+./config.sh \
+  --url https://github.com/gingur/<repo> \
+  --token "$(gh api -X POST repos/gingur/<repo>/actions/runners/registration-token --jq .token)" \
+  --labels local \
+  --unattended
+```
+
+### Run as a service
+
+From the same directory, the bundled script installs and starts the runner as
+a service — systemd on Linux, launchd on macOS (same script):
+
+```bash
+sudo ./svc.sh install && sudo ./svc.sh start   # Linux (systemd)
+./svc.sh install && ./svc.sh start             # macOS (launchd — no sudo)
+```
+
+**Hardening option — `--ephemeral`.** Passing `--ephemeral` to `config.sh`
+makes the runner deregister after each job, so no job ever sees a
+predecessor's workspace. The tradeoff: auto-re-registration needs a fresh
+registration token per job via the REST API and a PAT (extra moving parts on
+the machine). A **persistent** runner is acceptable here given the routing
+policy below — only operator-gated triggers ever reach it.
+
+### Machine prerequisites
+
+- `git`, `curl`, `tar` — checkout and runner tooling.
+- The `gh` CLI — preinstalled on GitHub-hosted images but **not** on local
+  machines; `claude.plan.yml`'s report/baton steps and the agent itself shell
+  out to it.
+- Node / pnpm are **not** prerequisites: the runner bundles its own runtime
+  for JS actions, and `actions/setup-node` / `pnpm/action-setup` maintain a
+  per-runner tool cache.
+
+### Routing policy (public repos)
+
+Only **operator-gated** triggers may target `local`:
+
+- `issues: assigned` — `claude.plan` (only collaborators can assign);
+- `push` to main — `cf.worker.deploy`;
+- `workflow_dispatch` — `cf.worker.rollback`.
+
+PR-triggered workflows (verify, preview, preview cleanup, secret scan)
+**always stay on GitHub-hosted runners** — a public repo must never run
+PR-driven code on a machine you own. `cf.worker.preview*.yml` deliberately
+have no `runner` input.
+
+### Consumer wiring
+
+Set the repo variable `RUNNER=local` and pass it through in the deploy /
+rollback caller workflows; `claude.plan.yml` reads `vars.RUNNER` on its own,
+so its caller needs no change:
+
+```bash
+gh variable set RUNNER --repo gingur/<repo> --body local
+```
+
+```yaml
+jobs:
+  deploy:
+    uses: gingur/devkit/.github/workflows/cf.worker.deploy.yml@main
+    with:
+      runner: ${{ vars.RUNNER }}
+      # …existing inputs unchanged
+```
+
+An unset or empty variable falls back to `ubuntu-latest`, so flipping
+local ↔ hosted is a repo-variable change with no commit:
+
+```bash
+gh variable delete RUNNER --repo gingur/<repo>   # back to GitHub-hosted
+```
+
+### Repo settings hardening
+
+In each repo that routes to `local`: **Settings → Actions → General → Fork
+pull request workflows from outside collaborators** → enable **"Require
+approval for all outside collaborators"**.
+
+### Caveats
+
+- **Machine offline:** jobs targeting `local` queue for up to 24 hours, then
+  fail. Flip `RUNNER` back to empty/unset to drain to GitHub-hosted runners.
+- **OIDC / Infisical work unchanged** on self-hosted — tokens are issued by
+  GitHub at run time, so no secrets are stored on the machine.
+- **Warm caches:** a persistent runner keeps its tool / pnpm caches between
+  jobs — repeat deploys get faster as a side benefit.
 
 ## PR previews
 

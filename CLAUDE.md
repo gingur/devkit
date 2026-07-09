@@ -150,6 +150,20 @@ Pin to `@main` (the gingur consumer convention).
   version on the source PR (sticky comment).
 - Rollback (manual dispatch) needs `contents: read` + `id-token: write`.
 
+### Self-hosted runner routing
+
+- **Only operator-gated triggers may target the `local` self-hosted runner:**
+  `issues: assigned` (claude.plan), `push` to main (deploy), `workflow_dispatch`
+  (rollback). PR-triggered workflows (verify, preview, preview cleanup, secret
+  scan) always run GitHub-hosted; `cf.worker.preview*.yml` deliberately expose
+  no `runner` input.
+- **Wiring:** set the repo variable `RUNNER=local` and pass
+  `runner: ${{ vars.RUNNER }}` in the deploy / rollback caller workflows;
+  `claude.plan.yml` reads `vars.RUNNER` on its own. An unset/empty variable
+  falls back to `ubuntu-latest`, so flipping local ↔ hosted is a repo-variable
+  change with no commit. Provisioning:
+  [README → Self-hosted runner (local)](./README.md#self-hosted-runner-local).
+
 ### `wrangler.toml`
 
 Use **named environments** — top-level is the shared base; production and preview

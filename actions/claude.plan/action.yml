@@ -1,0 +1,59 @@
+name: 'Claude planning turn'
+description: 'One planning turn on the triggering issue: reconcile state, propose or materialize a plan. Requires CLAUDE_CODE_OAUTH_TOKEN and GH_BOT_PAT in env (use infisical.secrets.fetch first). Billed to the Claude Max subscription.'
+
+inputs:
+  bot:
+    description: 'Machine-user login the workflow triggers on (the agent identity)'
+    required: false
+    default: 'gingur-bot'
+  turns:
+    description: 'Max agent turns per run (cost bound)'
+    required: false
+    default: '50'
+  model:
+    description: 'Model (claude --model value). Planning defaults to the strongest tier; empty falls back to the account default.'
+    required: false
+    default: 'fable'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Instructions
+      id: instructions
+      shell: bash
+      run: |
+        # agent.md -> system prompt via claude_args: escape for the double-quoted
+        # shell-quote value it gets embedded in (backslashes, then quotes, then
+        # "$" — claude-code-action's shell-quote parse runs env-less, so an
+        # unescaped $WORD would be substituted with empty string).
+        # agent.md must contain no line starting with "#" (stripped by CCA).
+        {
+          echo 'AGENT_MD<<EOF_9c4e1b'
+          sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\$/\\$/g' "${GITHUB_ACTION_PATH}/agent.md"
+          echo 'EOF_9c4e1b'
+          echo 'PLAN_MD<<EOF_9c4e1b'
+          cat "${GITHUB_ACTION_PATH}/prompt.md"
+          echo 'EOF_9c4e1b'
+        } >> "$GITHUB_ENV"
+
+    - name: Plan
+      uses: anthropics/claude-code-action@v1
+      env:
+        GH_TOKEN: ${{ env.GH_BOT_PAT }}
+      with:
+        claude_code_oauth_token: ${{ env.CLAUDE_CODE_OAUTH_TOKEN }}
+        github_token: ${{ env.GH_BOT_PAT }}
+        prompt: |
+          Run context:
+          - Repository: ${{ github.repository }}
+          - Ask issue: #${{ github.event.issue.number }}
+          - Your bot login: ${{ inputs.bot }}
+          - Operator (the human this turn): ${{ github.event.sender.login }}
+          - Turn budget: ${{ inputs.turns }} agent turns (the --max-turns hard cap)
+
+          ${{ env.PLAN_MD }}
+        claude_args: |
+          --dangerously-skip-permissions
+          --max-turns ${{ inputs.turns }}
+          ${{ inputs.model && format('--model {0}', inputs.model) || '' }}
+          --append-system-prompt "${{ env.AGENT_MD }}"

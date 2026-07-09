@@ -10,6 +10,10 @@ inputs:
     description: 'Max agent turns per run (cost bound)'
     required: false
     default: '50'
+  model:
+    description: 'Model override (claude --model value). Empty uses the account default.'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -33,3 +37,4 @@ runs:
         claude_args: |
           --dangerously-skip-permissions
           --max-turns ${{ inputs.turns }}
+          ${{ inputs.model && format('--model {0}', inputs.model) || '' }}

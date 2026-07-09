@@ -415,6 +415,7 @@ identity from the `INFISICAL_IDENTITY` Actions variable.
 | ------------------- | ----------------- | -------------------------------------------------------- |
 | `bot`               | `gingur-bot`      | machine-user login the trigger guards on                 |
 | `turns`             | `50`              | max agent turns per run (cost bound)                     |
+| `model`             | account default   | `claude --model` override (e.g. pin a cheaper model)     |
 | `infisicalIdentity` | —                 | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)  |
 | `infisicalProject`  | `gingur`          | Infisical project slug                                   |
 | `infisicalEnv`      | `prod`            | Infisical environment slug                               |

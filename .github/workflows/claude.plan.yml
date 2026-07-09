@@ -15,6 +15,11 @@ on:
         type: string
         required: false
         default: '50'
+      model:
+        description: 'Model override (claude --model value). Empty uses the account default.'
+        type: string
+        required: false
+        default: ''
       infisicalIdentity:
         description: 'Infisical machine identity UUID with OIDC trust for this repo'
         type: string
@@ -72,6 +77,7 @@ jobs:
         with:
           bot: ${{ inputs.bot || 'gingur-bot' }}
           turns: ${{ inputs.turns || '50' }}
+          model: ${{ inputs.model || '' }}
 
       - name: Report failure
         if: failure()

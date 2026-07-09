@@ -75,10 +75,10 @@ Pin by **trust in who can move the tag**:
 - **Third-party from a credible organization** — the tool's official org or a well-known GitHub org → **version tag**. The vendor controls the tag, tags stay readable, and patch releases flow in:
 
   ```yaml
-  uses: cloudflare/wrangler-action@v4        # Cloudflare (org)
-  uses: Infisical/secrets-action@v1.0.16     # Infisical (org)
-  uses: pnpm/action-setup@v6                 # pnpm (org)
-  uses: actions/checkout@v6                  # GitHub
+  uses: cloudflare/wrangler-action@v4 # Cloudflare (org)
+  uses: Infisical/secrets-action@v1.0.16 # Infisical (org)
+  uses: pnpm/action-setup@v6 # pnpm (org)
+  uses: actions/checkout@v6 # GitHub
   ```
 
 - **Third-party from an individual / community maintainer** — a personal account, not an org → **full commit SHA** with a trailing version comment, per [GitHub's security-hardening guidance](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#using-third-party-actions). A compromised personal account could repoint a mutable tag at malicious code; a SHA can't be moved:
@@ -164,27 +164,29 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 
 ## Reusable workflows reference
 
-| Goal                                             | Call                                                                 |
-| ------------------------------------------------ | -------------------------------------------------------------------- |
-| Verify (lint + typecheck + test) on PR           | `gingur/devkit/.github/workflows/node.verify.yml@main`               |
-| Deploy to production on push                     | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main`          |
-| Per-PR preview deploy                            | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main`         |
-| Tear down preview on PR close                    | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
-| Roll back production to a prior version (manual) | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main`        |
-| Scan a PR's commits for leaked secrets           | `gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main`    |
-| Planning agent turn on issue assignment          | `gingur/devkit/.github/workflows/claude.plan.yml@main`               |
+| Goal                                                | Call                                                                 |
+| --------------------------------------------------- | -------------------------------------------------------------------- |
+| Verify (lint + typecheck + test) on PR              | `gingur/devkit/.github/workflows/node.verify.yml@main`               |
+| Deploy to production on push                        | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main`          |
+| Per-PR preview deploy                               | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main`         |
+| Tear down preview on PR close                       | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
+| Roll back production to a prior version (manual)    | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main`        |
+| Scan a PR's commits for leaked secrets              | `gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main`    |
+| Planning agent turn on issue assignment             | `gingur/devkit/.github/workflows/claude.plan.yml@main`               |
+| Implementation agent turn on claude-task assignment | `gingur/devkit/.github/workflows/claude.implement.yml@main`          |
 
 ### Required permissions
 
-| Workflow                    | `contents` | `id-token` | `pull-requests`                        |
-| --------------------------- | ---------- | ---------- | -------------------------------------- |
-| `node.verify`               | `read`     | —          | —                                      |
-| `cf.worker.deploy`          | `read`     | `write`    | `write` (records version on source PR) |
-| `cf.worker.preview`         | `read`     | `write`    | `write`                                |
-| `cf.worker.preview.cleanup` | `read`     | `write`    | `write`                                |
-| `cf.worker.rollback`        | `read`     | `write`    | —                                      |
-| `infisical.secrets.scan`    | `read`     | —          | —                                      |
-| `claude.plan`               | `read`     | `write`    | — (requires `issues: write` instead)   |
+| Workflow                    | `contents` | `id-token` | `pull-requests`                                                                  |
+| --------------------------- | ---------- | ---------- | -------------------------------------------------------------------------------- |
+| `node.verify`               | `read`     | —          | —                                                                                |
+| `cf.worker.deploy`          | `read`     | `write`    | `write` (records version on source PR)                                           |
+| `cf.worker.preview`         | `read`     | `write`    | `write`                                                                          |
+| `cf.worker.preview.cleanup` | `read`     | `write`    | `write`                                                                          |
+| `cf.worker.rollback`        | `read`     | `write`    | —                                                                                |
+| `infisical.secrets.scan`    | `read`     | —          | —                                                                                |
+| `claude.plan`               | `read`     | `write`    | — (requires `issues: write` instead)                                             |
+| `claude.implement`          | `read`     | `write`    | — (requires `issues: write`; pushes/PRs use the bot PAT, not the workflow token) |
 
 ## PR previews
 
@@ -411,18 +413,83 @@ write; the Infisical identity's OIDC subject covers the repo; Issues enabled.
 In `devkit` itself the workflow self-triggers (no caller needed) and reads the
 identity from the `INFISICAL_IDENTITY` Actions variable.
 
-| Input               | Default           | Notes                                                    |
-| ------------------- | ----------------- | -------------------------------------------------------- |
-| `bot`               | `gingur-bot`      | machine-user login the trigger guards on                 |
-| `turns`             | `50`              | max agent turns per run (cost bound)                     |
-| `model`             | `fable`           | `claude --model` value (planning defaults to the top tier) |
-| `infisicalIdentity` | —                 | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)  |
-| `infisicalProject`  | `gingur`          | Infisical project slug                                   |
-| `infisicalEnv`      | `prod`            | Infisical environment slug                               |
-| `infisicalPath`     | `/infra/github`   | folder holding the two secrets                           |
-| `runner`            | `ubuntu-latest`   | runner label                                             |
+| Input               | Default         | Notes                                                      |
+| ------------------- | --------------- | ---------------------------------------------------------- |
+| `bot`               | `gingur-bot`    | machine-user login the trigger guards on                   |
+| `turns`             | `50`            | max agent turns per run (cost bound)                       |
+| `model`             | `fable`         | `claude --model` value (planning defaults to the top tier) |
+| `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)    |
+| `infisicalProject`  | `gingur`        | Infisical project slug                                     |
+| `infisicalEnv`      | `prod`          | Infisical environment slug                                 |
+| `infisicalPath`     | `/infra/github` | folder holding the two secrets                             |
+| `runner`            | `ubuntu-latest` | runner label                                               |
 
-**Scope note:** this workflow plans; it never implements. The implement
-workflow (triggering on `claude-task` issues) is a separate, future piece.
-This repo is public: the trigger requires issue *assignment*, which only
+**Scope note:** this workflow plans; it never implements — approved plans
+become `claude-task` issues, which [claude.implement](#claudeimplement--issue-driven-implementation-agent)
+picks up. claude.plan skips issues labeled `claude-task` (the mutual-exclusion
+guard), so the two never fire on the same issue.
+This repo is public: the trigger requires issue _assignment_, which only
 collaborators can perform — do not add `pull_request`-family triggers here.
+
+## claude.implement — issue-driven implementation agent
+
+The implementation sibling of claude.plan. Assign the machine user
+(`gingur-bot`) to an issue labeled `claude-task` (normally created by an
+approved claude.plan turn) and a Claude agent takes one **implementation
+turn**: it studies the task and its parent ask, implements on the
+deterministic branch `claude/task-<n>`, verifies with the repo's own checks
+(package.json scripts, CI definitions — discovered, not assumed), commits
+(conventional commits), pushes, and opens a **draft PR** containing
+`Closes #<task>` and a link to the parent ask, with honest verification
+results. The turn ends like every agent turn: one summary comment and the
+issue re-assigned to you (`if: always()`), failures posted with the run link.
+
+- **Follow-up turns:** comment your feedback on the task issue and re-assign
+  the bot — it checks out the same branch and pushes additional commits; the
+  same PR updates. It never force-pushes.
+- **Hard limits:** never merges, never pushes to the default branch, never
+  marks the PR ready for review — review and merge stay yours. If the task is
+  ambiguous or an acceptance criterion can't be met as written, it asks on
+  the issue instead of pushing speculative code.
+- **Mutual exclusion:** implement fires only on `claude-task`-labeled issues;
+  claude.plan skips them. One issue, one workflow.
+- **Billing/auth:** identical to claude.plan — Max-subscription OAuth token
+  and `GH_BOT_PAT` fetched from Infisical via OIDC (see the claude.plan
+  section); pushes and PRs are authored by the bot PAT, not the workflow
+  token.
+
+### Consumer workflow (copy-paste)
+
+```yaml
+# .github/workflows/implement.yml
+name: Implement
+on:
+  issues:
+    types: [assigned]
+
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+
+jobs:
+  implement:
+    uses: gingur/devkit/.github/workflows/claude.implement.yml@main
+    with:
+      infisicalIdentity: <machine identity UUID>
+```
+
+Same per-repo requirements as claude.plan; in `devkit` itself the workflow
+self-triggers and reads the identity from the `INFISICAL_IDENTITY` Actions
+variable.
+
+| Input               | Default         | Notes                                                            |
+| ------------------- | --------------- | ---------------------------------------------------------------- |
+| `bot`               | `gingur-bot`    | machine-user login the trigger guards on                         |
+| `turns`             | `100`           | max agent turns per run (cost bound)                             |
+| `model`             | `fable`         | `claude --model` value (implementation defaults to the top tier) |
+| `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)          |
+| `infisicalProject`  | `gingur`        | Infisical project slug                                           |
+| `infisicalEnv`      | `prod`          | Infisical environment slug                                       |
+| `infisicalPath`     | `/infra/github` | folder holding the two secrets                                   |
+| `runner`            | `ubuntu-latest` | runner label                                                     |

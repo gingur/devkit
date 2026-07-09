@@ -57,7 +57,7 @@ concurrency:
 
 jobs:
   plan:
-    if: github.event.assignee.login == (inputs.bot || 'gingur-bot')
+    if: github.event.assignee.login == (inputs.bot || 'gingur-bot') && !contains(github.event.issue.labels.*.name, 'claude-task')
     runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:

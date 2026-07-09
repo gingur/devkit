@@ -29,7 +29,7 @@ runs:
         # agent.md must contain no line starting with "#" (stripped by CCA).
         {
           echo 'AGENT_MD<<EOF_9c4e1b'
-          sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\$/\\$/g' "${GITHUB_ACTION_PATH}/agent.md"
+          sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\$/\\$/g' "${GITHUB_ACTION_PATH}/../claude.agent.md"
           echo 'EOF_9c4e1b'
           echo 'PLAN_MD<<EOF_9c4e1b'
           cat "${GITHUB_ACTION_PATH}/prompt.md"

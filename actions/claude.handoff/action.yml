@@ -9,7 +9,7 @@ inputs:
     description: 'Human login to assign and @mention'
     required: true
   status:
-    description: "Calling job's status (pass ${{ job.status }})"
+    description: "Calling job's status (callers pass the job.status expression)"
     required: true
   turn:
     description: 'Human word naming the turn kind for the comment text (e.g., Planning, Implementation)'

@@ -174,6 +174,7 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 | Scan a PR's commits for leaked secrets              | `gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main`    |
 | Planning agent turn on issue assignment             | `gingur/devkit/.github/workflows/claude.plan.yml@main`               |
 | Implementation agent turn on claude-task assignment | `gingur/devkit/.github/workflows/claude.implement.yml@main`          |
+| Start agent turns from trusted comments / ticks     | `gingur/devkit/.github/workflows/claude.wake.yml@main`               |
 
 ### Required permissions
 
@@ -187,6 +188,7 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 | `infisical.secrets.scan`    | `read`     | —          | —                                                                                |
 | `claude.plan`               | `read`     | `write`    | — (requires `issues: write` instead)                                             |
 | `claude.implement`          | `read`     | `write`    | — (requires `issues: write`; pushes/PRs use the bot PAT, not the workflow token) |
+| `claude.wake`               | `read`     | `write`    | — (assigns via the bot PAT, not the workflow token)                              |
 
 ## PR previews
 
@@ -361,21 +363,31 @@ wrangler rollback <version-id> --env production --message "manual rollback"
 
 ## claude.plan — issue-driven planning agent
 
-Assign an issue to the machine user (`gingur-bot`) and a Claude agent takes one
-**planning turn**: it studies the ask (repo code, issue thread, the web),
-posts a plan as a comment, and hands the issue back by re-assigning you.
-Comment your approval or corrections and re-assign the bot; on an approving
-turn it creates the plan's tasks as sub-issues labeled `claude-task`. Every
-turn ends with a summary comment and the issue assigned back to you — on
-failure, a comment carries the run link instead. Full design rationale:
+Assign an issue to the machine user (`gingur-bot`) and a Claude agent takes
+one **planning turn**: it studies the ask (repo code, issue thread, the web),
+posts a plan as a comment, and hands the issue back. That first assignment
+auto-enrolls the issue with the `claude-ask` label, and from then on the cycle
+is reply-driven via [claude.wake](#claudewake--comment-driven-turn-triggers):
+after each plan the bot posts an **action panel** with an **Approve**
+checkbox. Tick it to accept — the next turn creates the plan's tasks as
+sub-issues labeled `claude-task` — or just reply to discuss (any reply starts
+a revise/answer turn automatically). **Ticking Approve is the only way to
+accept a plan; comments are always discussion.** Prefix a comment with
+`[hold]` to comment without starting a turn. Every turn ends with a summary
+comment and the issue assigned back to you — on failure, a comment carries
+the run link instead. Full design rationale:
 [design spec](https://gist.github.com/gingur/db3b2def680edfc42e93b9275497b0a9).
 
-- **Turn-taking:** assignment is the baton. Bot assigned = agent's turn;
-  you assigned = your turn. The agent never assigns anyone; the workflow
-  re-assigns you unconditionally (`if: always()`), even when the run fails.
+- **Turn-taking:** you start a turn by ticking a panel checkbox or replying
+  on the issue. Assigning the bot still works as a fallback _trigger_ — it
+  starts a turn but never approves a plan. The panel checkboxes are tappable
+  in the GitHub mobile app (validated on Android) and on github.com. The
+  agent never assigns anyone; the workflow assigns the issue back to you
+  unconditionally (`if: always()`), even when the run fails.
 - **Stateless turns:** each run re-derives state from the issue (plan comment
-  present? sub-issues present? operator comments since the bot's last one?)
-  and does the next right thing — propose, revise, materialize, or reconcile.
+  present? Approve ticked? sub-issues present? operator comments since the
+  bot's last one?) and does the next right thing — propose, revise,
+  materialize, or reconcile.
   Re-running is always safe. To skip the review gate for small asks, write
   "no review needed, create the tasks directly" in the issue body.
 - **Billing:** runs authenticate with a Claude Max subscription OAuth token
@@ -408,6 +420,11 @@ jobs:
       infisicalIdentity: <machine identity UUID>
 ```
 
+The trigger stays `on: issues: [assigned]` — do **not** add `issue_comment`
+here. Comment and checkbox handling lives entirely in the separate
+[claude.wake caller](#claudewake--comment-driven-turn-triggers), which starts
+turns by assigning the bot.
+
 Requirements per consumer repo: `gingur-bot` invited as a collaborator with
 write; the Infisical identity's OIDC subject covers the repo; Issues enabled.
 In `devkit` itself the workflow self-triggers (no caller needed) and reads the
@@ -428,8 +445,10 @@ identity from the `INFISICAL_IDENTITY` Actions variable.
 become `claude-task` issues, which [claude.implement](#claudeimplement--issue-driven-implementation-agent)
 picks up. claude.plan skips issues labeled `claude-task` (the mutual-exclusion
 guard), so the two never fire on the same issue.
-This repo is public: the trigger requires issue _assignment_, which only
-collaborators can perform — do not add `pull_request`-family triggers here.
+This repo is public: turns start only from issue _assignment_ (which only
+collaborators can perform) and from trusted comments or panel ticks via
+[claude.wake](#claudewake--comment-driven-turn-triggers) (gated as described
+there) — still no `pull_request`-family triggers anywhere in the agent surface.
 
 ### Notifications
 
@@ -454,9 +473,10 @@ deterministic branch `claude/task-<n>`, verifies with the repo's own checks
 results. The turn ends like every agent turn: one summary comment and the
 issue re-assigned to you (`if: always()`), failures posted with the run link.
 
-- **Follow-up turns:** comment your feedback on the task issue and re-assign
-  the bot — it checks out the same branch and pushes additional commits; the
-  same PR updates. It never force-pushes.
+- **Follow-up turns:** comment your feedback on the task issue — the turn
+  starts automatically (task issues are wake-enrolled by their `claude-task`
+  label; re-assigning the bot also works). It checks out the same branch and
+  pushes additional commits; the same PR updates. It never force-pushes.
 - **Hard limits:** never merges, never pushes to the default branch, never
   marks the PR ready for review — review and merge stay yours. If the task is
   ambiguous or an acceptance criterion can't be met as written, it asks on
@@ -492,6 +512,10 @@ jobs:
       infisicalIdentity: <machine identity UUID>
 ```
 
+The trigger stays `on: issues: [assigned]` — as with claude.plan, do **not**
+add `issue_comment` here; comment and checkbox handling lives entirely in the
+separate [claude.wake caller](#claudewake--comment-driven-turn-triggers).
+
 Same per-repo requirements as claude.plan; in `devkit` itself the workflow
 self-triggers and reads the identity from the `INFISICAL_IDENTITY` Actions
 variable.
@@ -506,3 +530,88 @@ variable.
 | `infisicalEnv`      | `prod`          | Infisical environment slug                                       |
 | `infisicalPath`     | `/infra/github` | folder holding the two secrets                                   |
 | `runner`            | `ubuntu-latest` | runner label                                                     |
+
+## claude.wake — comment-driven turn triggers
+
+The trigger layer behind the reply-driven cycle: a separate always-on workflow
+(`issue_comment: [created, edited]`) that watches enrolled issues and starts
+an agent turn by assigning the bot — you drive turns by replying or tapping a
+checkbox instead of touching the assignee field. It fires when:
+
+- a **trusted user comments** on an open issue labeled `claude-ask` or
+  `claude-task` — prefix the comment with `[hold]` to comment without waking;
+- a **checkbox is ticked** in a bot-authored **action panel** — ticking edits
+  the comment, and that edit is the trigger.
+
+Waking removes and re-adds the bot as assignee, so it works even when the bot
+is already assigned (a comment landing mid-turn queues a follow-up turn via
+the agent workflows' per-issue concurrency instead of getting lost).
+
+**Security model.** Created comments are gated on the server-computed
+`author_association` — only `OWNER` / `MEMBER` / `COLLABORATOR` qualify
+(`CONTRIBUTOR` / `NONE` are deliberately excluded), so drive-by comments on a
+public repo can't start paid turns. Ticks need no association check: only
+users with write access can edit another user's comment, and the gate
+additionally requires the edited comment to be bot-authored and carry the
+panel marker. Label enrollment (`claude-ask` is auto-applied by claude.plan's
+first turn; `claude-task` issues are created labeled) keeps arbitrary issues
+from waking the agent. Wake assigns with `GH_BOT_PAT` rather than the
+workflow's own token because events caused by `GITHUB_TOKEN` never trigger
+workflows — a `GITHUB_TOKEN` assignment would silently start nothing.
+
+**Action panels** are the operator's one-tap controls: bot comments opening
+with the `<!-- claude:action-panel -->` marker and offering `- [ ]`
+checkboxes. At most **one live panel per issue** — the `claude.handoff`
+composite posts the turn's panel (Approve after plan turns) and neutralizes
+older panels into plain-text decision records (marker swapped to
+`<!-- claude:action-panel:done -->`, ticked boxes rendered as `✔ …`), so the
+thread reads as a decision log and stale ticks can't re-trigger. When an
+agent question has enumerable answers it posts a **choices menu** — one
+option per checkbox; a genuinely multi-select menu ends with a **Submit**
+box, ticked last to send the selection.
+
+**Debounce.** Per-issue `concurrency` with `cancel-in-progress: true` plus a
+leading `quiet`-seconds sleep coalesce bursts: each qualifying event cancels
+the pending wake and restarts the quiet timer, so a reply-then-tick or a
+flurry of ticks assigns once, from the final state. Multi-select panels
+extend this via the Submit convention above — the wake gate arms only once
+the **Submit** box is ticked, so earlier ticks on that panel never fire.
+
+**Operator fallback.** Wake assigns via the bot PAT, so the assignment
+event's sender is the bot itself; the turn-end handoff then falls back to
+`github.repository_owner` as the operator to hand the issue back to. A
+direct human assignment hands back to that human, as before.
+
+### Consumer workflow (copy-paste)
+
+```yaml
+# .github/workflows/wake.yml
+name: Wake
+on:
+  issue_comment:
+    types: [created, edited]
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  wake:
+    uses: gingur/devkit/.github/workflows/claude.wake.yml@main
+    with:
+      infisicalIdentity: <machine identity UUID>
+```
+
+This caller lives alongside the claude.plan / claude.implement callers and is
+the only place `issue_comment` is handled — the agent callers keep their
+`on: issues: [assigned]` triggers unchanged. In `devkit` itself the workflow
+self-triggers (no caller needed) and reads the identity from the
+`INFISICAL_IDENTITY` Actions variable.
+
+| Input               | Default         | Notes                                                         |
+| ------------------- | --------------- | ------------------------------------------------------------- |
+| `bot`               | `gingur-bot`    | machine-user login to assign (the agent identity wake starts) |
+| `quiet`             | `20`            | debounce quiet period in seconds; each new event restarts it  |
+| `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)       |
+| `infisicalProject`  | `gingur`        | Infisical project slug                                        |
+| `infisicalEnv`      | `prod`          | Infisical environment slug                                    |
+| `infisicalPath`     | `/infra/github` | folder holding the two secrets                                |
+| `runner`            | `ubuntu-latest` | runner label                                                  |

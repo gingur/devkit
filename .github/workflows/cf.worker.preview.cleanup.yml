@@ -38,6 +38,7 @@ permissions:
 
 jobs:
   cleanup:
+    # PR-triggered: always GitHub-hosted; never route to a self-hosted runner (public repo)
     runs-on: ubuntu-latest
     # Match the preview deploy's GitHub Environment so teardown authenticates to
     # Infisical under the same OIDC subject: ...:environment:preview.

@@ -34,6 +34,11 @@ on:
         description: 'Infisical machine identity UUID with OIDC trust for this repo'
         type: string
         required: true
+      runner:
+        description: 'Runner label'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
 
 permissions:
   contents: read
@@ -41,7 +46,7 @@ permissions:
 
 jobs:
   rollback:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     environment: production
     steps:
       - uses: actions/checkout@v6

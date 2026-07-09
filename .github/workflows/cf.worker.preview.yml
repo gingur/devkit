@@ -72,6 +72,7 @@ jobs:
 
   domain:
     needs: deploy
+    # PR-triggered: always GitHub-hosted; never route to a self-hosted runner (public repo)
     runs-on: ubuntu-latest
     # Same GitHub Environment as the deploy job, so the whole preview lifecycle
     # authenticates to Infisical under one OIDC subject: ...:environment:preview.

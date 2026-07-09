@@ -61,6 +61,21 @@ jobs:
     runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:
+      # Label the issue claude-ask so claude.wake.yml treats operator replies
+      # as turn triggers from the first assignment onward (task issues need no
+      # enrollment — they are created with claude-task).
+      - name: Enroll
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          gh label create claude-ask --repo "$REPO" \
+            --description "agent ask issue — operator replies drive turns" \
+            --color 1d76db || true
+          gh issue edit "$ISSUE" --repo "$REPO" --add-label claude-ask
+
       - name: Checkout
         uses: actions/checkout@v6
 
@@ -84,6 +99,8 @@ jobs:
         uses: gingur/devkit/actions/claude.handoff@main
         with:
           bot: ${{ inputs.bot || 'gingur-bot' }}
-          operator: ${{ github.event.sender.login }}
+          # Wake assigns via the bot PAT, so sender can be the bot itself —
+          # fall back to the repo owner as the operator.
+          operator: ${{ github.event.sender.login != (inputs.bot || 'gingur-bot') && github.event.sender.login || github.repository_owner }}
           status: ${{ job.status }}
           turn: Planning

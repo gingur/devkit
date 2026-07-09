@@ -48,7 +48,7 @@ runs:
           - Repository: ${{ github.repository }}
           - Ask issue: #${{ github.event.issue.number }}
           - Your bot login: ${{ inputs.bot }}
-          - Operator (the human this turn): ${{ github.event.sender.login }}
+          - Operator (the human this turn): ${{ github.event.sender.login != inputs.bot && github.event.sender.login || github.repository_owner }}
           - Turn budget: ${{ inputs.turns }} agent turns (the --max-turns hard cap)
 
           ${{ env.PLAN_MD }}

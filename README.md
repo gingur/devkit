@@ -381,7 +381,7 @@ failure, a comment carries the run link instead. Full design rationale:
   interactive Claude Code use; `turns` bounds the worst case per run.
 - **Auth:** no GitHub secrets. `infisical.secrets.fetch` (OIDC) pulls
   `CLAUDE_CODE_OAUTH_TOKEN` and `GH_BOT_PAT` from Infisical project `gingur`,
-  env `prod`, path `/_shared/agents`. The bot PAT authors all agent-created
+  env `prod`, path `/infra/github`. The bot PAT authors all agent-created
   issues/comments so they can trigger downstream workflows (the default
   `GITHUB_TOKEN` is suppressed from triggering; a PAT is not).
 
@@ -418,7 +418,7 @@ identity from the `INFISICAL_IDENTITY` Actions variable.
 | `infisicalIdentity` | —                 | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)  |
 | `infisicalProject`  | `gingur`          | Infisical project slug                                   |
 | `infisicalEnv`      | `prod`            | Infisical environment slug                               |
-| `infisicalPath`     | `/_shared/agents` | folder holding the two secrets                           |
+| `infisicalPath`     | `/infra/github`   | folder holding the two secrets                           |
 | `runner`            | `ubuntu-latest`   | runner label                                             |
 
 **Scope note:** this workflow plans; it never implements. The implement

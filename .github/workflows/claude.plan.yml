@@ -34,7 +34,7 @@ on:
         description: 'Infisical secret folder path'
         type: string
         required: false
-        default: '/_shared/agents'
+        default: '/infra/github'
       runner:
         description: 'Runner label'
         type: string
@@ -65,7 +65,7 @@ jobs:
           identity: ${{ inputs.infisicalIdentity || vars.INFISICAL_IDENTITY }}
           project: ${{ inputs.infisicalProject || 'gingur' }}
           env: ${{ inputs.infisicalEnv || 'prod' }}
-          path: ${{ inputs.infisicalPath || '/_shared/agents' }}
+          path: ${{ inputs.infisicalPath || '/infra/github' }}
 
       - name: Plan
         uses: gingur/devkit/actions/claude.plan@main

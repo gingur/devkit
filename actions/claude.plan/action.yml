@@ -31,6 +31,7 @@ runs:
           - Ask issue: #${{ github.event.issue.number }}
           - Your bot login: ${{ inputs.bot }}
           - Operator (the human this turn): ${{ github.event.sender.login }}
+          - Turn budget: ${{ inputs.turns }} agent turns (the --max-turns hard cap)
 
           Read the file at ${{ github.action_path }}/prompt.md and follow it
           exactly for the ask issue above.

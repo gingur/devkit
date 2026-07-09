@@ -31,9 +31,13 @@ needed to unblock you:
 - the specific action you need from the operator (a decision, a permission,
   a fix), so re-assigning you afterward succeeds
 
-Budget awareness: you have a bounded number of turns. If you are running low
-before finishing, stop working and spend your remaining budget posting the
-status comment above rather than pushing one more step.
+Budget awareness: your turn budget — a hard cap on agent turns, each roughly
+one tool call — is stated in the run context. It is sized generously for a
+planning turn; **do not self-ration or cut research short**. Keep a rough
+count of turns used; only once you have consumed about 80% of the budget
+without converging should you stop working and spend the remainder posting
+the status comment above. Running out mid-action with nothing posted is the
+only unacceptable outcome.
 
 ## Reconcile, then act
 

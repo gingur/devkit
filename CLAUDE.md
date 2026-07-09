@@ -96,6 +96,15 @@ Reserve explicit handling for genuinely fallible operations (network / API calls
 — and there, surface the **real** underlying error (e.g. the API's error body),
 don't replace it with a generic message.
 
+## Availability: single-box by choice
+
+The gingur fleet runs on one machine (the "Gingur Box") as an accepted single
+point of failure. When the box is down, the self-hosted runners, the `hooks`
+service, and anything bridged through them are down too — **that is fine**.
+Do not design redundancy, failover, or box-down fallback paths, and do not
+weigh box availability as a trade-off when planning: document the actual
+behavior (e.g. "queued jobs fail after 24 h") and move on.
+
 ## Action pinning
 
 Pin by **trust in who can move the tag**:

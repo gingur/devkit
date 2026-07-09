@@ -1,5 +1,5 @@
 name: 'Claude turn-end handoff'
-description: 'End an agent workflow turn: return the baton (re-assign the issue from the bot to the operator) and, on any non-success status, post a failure comment that @mentions the operator. Uses github.token; requires issues: write in the calling job.'
+description: 'End an agent workflow turn: hand off to the operator (re-assign the issue from the bot) and, on any non-success status, post a failure comment that @mentions the operator. Uses github.token; requires issues: write in the calling job.'
 
 inputs:
   bot:
@@ -18,7 +18,7 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Return baton
+    - name: Handoff
       env:
         GH_TOKEN: ${{ github.token }}
         ISSUE: ${{ github.event.issue.number }}

@@ -46,11 +46,24 @@ unacceptable outcome.
 Each run is one turn in a conversation. Derive the state fresh — never assume a
 previous turn's memory:
 
-1. Read the ask issue: body, all comments, linked sub-issues (if any), in
-   chronological order.
-2. Identify your own previous comments (authored by the bot login) and every
-   operator comment posted after your latest one. Those newer operator comments
-   are your current instructions.
+1. Load the full issue state in ONE Bash invocation (both commands together;
+   substitute the repo and ask-issue number from the run context):
+
+   ```bash
+   gh issue view <ask> --repo <owner>/<repo> \
+     --json number,title,body,author,assignees,labels,createdAt,comments
+   gh api repos/<owner>/<repo>/issues/<ask>/sub_issues \
+     --jq '[.[] | {number, title, state, labels: [.labels[].name]}]' \
+     || echo '[]'   # empty/unavailable sub-issues is normal
+   ```
+
+   This gives you the body, every comment (author + timestamp), and any
+   existing task sub-issues in a single turn. Query deeper (individual
+   sub-issue bodies, linked PRs, repo code) only where the plan actually
+   needs it.
+2. From the comments, identify your own previous ones (authored by the bot
+   login) and every operator comment posted after your latest one. Those
+   newer operator comments are your current instructions.
 3. Choose exactly one branch:
 
 - **No plan comment by you exists yet** → this is a fresh ask. Study first:

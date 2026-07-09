@@ -431,6 +431,16 @@ guard), so the two never fire on the same issue.
 This repo is public: the trigger requires issue _assignment_, which only
 collaborators can perform — do not add `pull_request`-family triggers here.
 
+### Notifications
+
+Every turn ends with `claude.handoff` re-assigning you to the issue, so the
+GitHub mobile app's **assignment push** is the "your turn" signal. A failed,
+timed-out, or cancelled turn additionally **@mentions you** in the failure
+comment, producing a distinct **mention push** — assignment alone means the
+turn completed; a mention means it needs attention. No secrets, apps, or
+services are required beyond GitHub mobile push notifications for assignments
+and direct mentions (both on by default).
+
 ## claude.implement — issue-driven implementation agent
 
 The implementation sibling of claude.plan. Assign the machine user
@@ -457,6 +467,9 @@ issue re-assigned to you (`if: always()`), failures posted with the run link.
   and `GH_BOT_PAT` fetched from Infisical via OIDC (see the claude.plan
   section); pushes and PRs are authored by the bot PAT, not the workflow
   token.
+- **Notifications:** identical to claude.plan — see
+  [Notifications](#notifications) (assignment push = turn done; mention
+  push = turn failed).
 
 ### Consumer workflow (copy-paste)
 

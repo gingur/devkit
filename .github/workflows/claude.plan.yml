@@ -58,7 +58,9 @@ concurrency:
 jobs:
   plan:
     if: github.event.assignee.login == (inputs.bot || 'gingur-bot') && !contains(github.event.issue.labels.*.name, 'claude-task')
-    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
+    # vars.RUNNER fallback: the direct issues:assigned trigger has no caller to
+    # pass inputs; in workflow_call mode vars resolves against the calling repo.
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:
       # Label the issue claude-ask so claude.wake.yml treats operator replies

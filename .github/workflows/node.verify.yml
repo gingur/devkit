@@ -44,7 +44,7 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.cwd }}

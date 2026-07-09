@@ -35,6 +35,7 @@ runs:
           echo 'TASK_MD<<EOF_9c4e1b'
           cat "${GITHUB_ACTION_PATH}/prompt.md"
           echo 'EOF_9c4e1b'
+          echo "TURN_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         } >> "$GITHUB_ENV"
 
     - name: Implement
@@ -59,3 +60,22 @@ runs:
           --max-turns ${{ inputs.turns }}
           ${{ inputs.model && format('--model {0}', inputs.model) || '' }}
           --append-system-prompt "${{ env.AGENT_MD }}"
+
+    # The agent's contract is at least one comment per turn (its summary, or a
+    # blocker report). A run that "succeeds" silently burns real quota with the
+    # operator none the wiser — fail the job instead, so the handoff posts the
+    # failure comment and returns the baton.
+    - name: Verify
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ISSUE: ${{ github.event.issue.number }}
+        REPO: ${{ github.repository }}
+        BOT: ${{ inputs.bot }}
+      shell: bash
+      run: |
+        n=$(gh api "repos/$REPO/issues/$ISSUE/comments" --paginate \
+          --jq "[.[] | select(.user.login == \"$BOT\" and .created_at >= \"$TURN_STARTED\")] | length")
+        if [[ "$n" -eq 0 ]]; then
+          echo "::error::agent turn ended without posting any comment (contract: at least one per turn)"
+          exit 1
+        fi

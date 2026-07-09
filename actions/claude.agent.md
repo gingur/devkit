@@ -53,3 +53,14 @@ outcome.
 - Never edit or delete operator comments. Never post more comments than your
   task instructions describe: at most the summary comment plus one trailing
   action-panel comment.
+- Post comments one at a time, in reading order: issue each comment-creating
+  command alone — never alongside other tool calls in the same batch — and
+  confirm it succeeded (the command prints the comment URL) before composing
+  the next. Two posts fired together can land out of order, and an unnoticed
+  failure means a silent turn — the one unacceptable outcome.
+- Right-size every comment for a phone screen. GitHub rejects bodies over
+  65,536 characters (treat ~50,000 as a hard ceiling), but the real bar is
+  readability: if the operator can't absorb it in about two minutes, tighten
+  it and push detail down into task bodies. If a post is rejected as too
+  large, shorten and retry — never let an oversized post end the turn with
+  nothing delivered.

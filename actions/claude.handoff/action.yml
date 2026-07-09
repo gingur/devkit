@@ -34,6 +34,29 @@ runs:
         gh issue edit "$ISSUE" --repo "$REPO" \
           --remove-assignee "$BOT" --add-assignee "$OPERATOR"
 
+    # Remove the bot's 👀 acknowledgements (added by claude.wake on the
+    # triggering comment) — the turn is over either way, success or failure.
+    # Reactions belong to the bot user, so removal needs the bot PAT (from the
+    # job env, like Panels); best-effort when it's absent.
+    - name: Unack
+      env:
+        ISSUE: ${{ github.event.issue.number }}
+        REPO: ${{ github.repository }}
+        BOT: ${{ inputs.bot }}
+      shell: bash
+      run: |
+        [[ -z "${GH_BOT_PAT:-}" ]] && { echo 'GH_BOT_PAT absent — skipping ack cleanup'; exit 0; }
+        export GH_TOKEN=$GH_BOT_PAT
+        # Comment payloads carry reaction counts, so only comments actually
+        # showing 👀 need the per-comment reactions lookup.
+        for cid in $(gh api "repos/$REPO/issues/$ISSUE/comments" --paginate \
+            --jq '.[] | select(.reactions.eyes > 0) | .id'); do
+          for rid in $(gh api "repos/$REPO/issues/comments/$cid/reactions" \
+              --jq ".[] | select(.content == \"eyes\" and .user.login == \"$BOT\") | .id"); do
+            gh api -X DELETE "repos/$REPO/issues/comments/$cid/reactions/$rid" --silent || true
+          done
+        done
+
     # Action panels are the operator's one-tap controls — at most one live per
     # issue. Listing and neutralizing use github.token: PATCH keeps the original
     # author, and GITHUB_TOKEN events never trigger workflows (wake additionally

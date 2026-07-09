@@ -23,11 +23,13 @@ runs:
       shell: bash
       run: |
         # agent.md -> system prompt via claude_args: escape for the double-quoted
-        # shell-quote value it gets embedded in (backslashes, then double quotes).
+        # shell-quote value it gets embedded in (backslashes, then quotes, then
+        # "$" — claude-code-action's shell-quote parse runs env-less, so an
+        # unescaped $WORD would be substituted with empty string).
         # agent.md must contain no line starting with "#" (stripped by CCA).
         {
           echo 'AGENT_MD<<EOF_9c4e1b'
-          sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' "${GITHUB_ACTION_PATH}/agent.md"
+          sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\$/\\$/g' "${GITHUB_ACTION_PATH}/agent.md"
           echo 'EOF_9c4e1b'
           echo 'PLAN_MD<<EOF_9c4e1b'
           cat "${GITHUB_ACTION_PATH}/prompt.md"

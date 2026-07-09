@@ -79,28 +79,11 @@ jobs:
           turns: ${{ inputs.turns || '50' }}
           model: ${{ inputs.model || 'fable' }}
 
-      - name: Report failure
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ github.event.issue.number }}
-          REPO: ${{ github.repository }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        shell: bash
-        run: |
-          gh issue comment "$ISSUE" --repo "$REPO" --body "⚠️ **Planning turn failed.** See the run log: $RUN_URL
-
-          Fix the cause and re-assign the bot to retry — turns are safe to repeat."
-
-      - name: Return baton
+      - name: Handoff
         if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ github.event.issue.number }}
-          REPO: ${{ github.repository }}
-          BOT: ${{ inputs.bot || 'gingur-bot' }}
-          OPERATOR: ${{ github.event.sender.login }}
-        shell: bash
-        run: |
-          gh issue edit "$ISSUE" --repo "$REPO" \
-            --remove-assignee "$BOT" --add-assignee "$OPERATOR"
+        uses: gingur/devkit/actions/claude.handoff@main
+        with:
+          bot: ${{ inputs.bot || 'gingur-bot' }}
+          operator: ${{ github.event.sender.login }}
+          status: ${{ job.status }}
+          turn: Planning

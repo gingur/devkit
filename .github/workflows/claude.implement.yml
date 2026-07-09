@@ -84,6 +84,8 @@ jobs:
         uses: gingur/devkit/actions/claude.handoff@main
         with:
           bot: ${{ inputs.bot || 'gingur-bot' }}
-          operator: ${{ github.event.sender.login }}
+          # Wake assigns via the bot PAT, so sender can be the bot itself —
+          # fall back to the repo owner as the operator.
+          operator: ${{ github.event.sender.login != (inputs.bot || 'gingur-bot') && github.event.sender.login || github.repository_owner }}
           status: ${{ job.status }}
           turn: Implementation

@@ -49,7 +49,7 @@ runs:
           - Repository: ${{ github.repository }}
           - Task issue: #${{ github.event.issue.number }}
           - Your bot login: ${{ inputs.bot }}
-          - Operator (the human this turn): ${{ github.event.sender.login }}
+          - Operator (the human this turn): ${{ github.event.sender.login != inputs.bot && github.event.sender.login || github.repository_owner }}
           - Turn budget: ${{ inputs.turns }} agent turns (the --max-turns hard cap)
           - Work branch: claude/task-${{ github.event.issue.number }}
 

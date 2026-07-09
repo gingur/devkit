@@ -18,6 +18,22 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Instructions
+      id: instructions
+      shell: bash
+      run: |
+        # agent.md -> system prompt via claude_args: escape for the double-quoted
+        # shell-quote value it gets embedded in (backslashes, then double quotes).
+        # agent.md must contain no line starting with "#" (stripped by CCA).
+        {
+          echo 'AGENT_MD<<EOF_9c4e1b'
+          sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' "${GITHUB_ACTION_PATH}/agent.md"
+          echo 'EOF_9c4e1b'
+          echo 'PLAN_MD<<EOF_9c4e1b'
+          cat "${GITHUB_ACTION_PATH}/prompt.md"
+          echo 'EOF_9c4e1b'
+        } >> "$GITHUB_ENV"
+
     - name: Plan
       uses: anthropics/claude-code-action@v1
       env:
@@ -33,9 +49,9 @@ runs:
           - Operator (the human this turn): ${{ github.event.sender.login }}
           - Turn budget: ${{ inputs.turns }} agent turns (the --max-turns hard cap)
 
-          Read the file at ${{ github.action_path }}/prompt.md and follow it
-          exactly for the ask issue above.
+          ${{ env.PLAN_MD }}
         claude_args: |
           --dangerously-skip-permissions
           --max-turns ${{ inputs.turns }}
           ${{ inputs.model && format('--model {0}', inputs.model) || '' }}
+          --append-system-prompt "${{ env.AGENT_MD }}"

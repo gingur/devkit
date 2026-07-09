@@ -258,7 +258,8 @@ policy below — only operator-gated triggers ever reach it.
 
 Only **operator-gated** triggers may target `local`:
 
-- `issues: assigned` — `claude.plan` (only collaborators can assign);
+- `issues: assigned` — `claude.plan` / `claude.implement` (only collaborators
+  can assign);
 - `push` to main — `cf.worker.deploy`;
 - `workflow_dispatch` — `cf.worker.rollback`.
 
@@ -270,8 +271,8 @@ have no `runner` input.
 ### Consumer wiring
 
 Set the repo variable `RUNNER=local` and pass it through in the deploy /
-rollback caller workflows; `claude.plan.yml` reads `vars.RUNNER` on its own,
-so its caller needs no change:
+rollback caller workflows; `claude.plan.yml` and `claude.implement.yml` read
+`vars.RUNNER` on their own, so their callers need no change:
 
 ```bash
 gh variable set RUNNER --repo gingur/<repo> --body local

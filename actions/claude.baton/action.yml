@@ -1,0 +1,47 @@
+name: 'Claude turn-end handoff'
+description: 'End an agent workflow turn: return the baton (re-assign the issue from the bot to the operator) and, on any non-success status, post a failure comment that @mentions the operator. Uses github.token; requires issues: write in the calling job.'
+
+inputs:
+  bot:
+    description: 'Machine-user login to unassign'
+    required: true
+  operator:
+    description: 'Human login to assign and @mention'
+    required: true
+  status:
+    description: "Calling job's status (pass ${{ job.status }})"
+    required: true
+  turn:
+    description: 'Human word naming the turn kind for the comment text (e.g., Planning, Implementation)'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Return baton
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ISSUE: ${{ github.event.issue.number }}
+        REPO: ${{ github.repository }}
+        BOT: ${{ inputs.bot }}
+        OPERATOR: ${{ inputs.operator }}
+      shell: bash
+      run: |
+        gh issue edit "$ISSUE" --repo "$REPO" \
+          --remove-assignee "$BOT" --add-assignee "$OPERATOR"
+
+    - name: Report failure
+      if: inputs.status != 'success'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ISSUE: ${{ github.event.issue.number }}
+        REPO: ${{ github.repository }}
+        OPERATOR: ${{ inputs.operator }}
+        STATUS: ${{ inputs.status }}
+        TURN: ${{ inputs.turn }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      shell: bash
+      run: |
+        gh issue comment "$ISSUE" --repo "$REPO" --body "⚠️ @$OPERATOR **$TURN turn did not complete** (status: $STATUS). See the run log: $RUN_URL
+
+        Fix the cause and re-assign the bot to retry — turns are safe to repeat."

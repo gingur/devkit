@@ -110,5 +110,10 @@ must say so explicitly — never imply checks passed that didn't run.
 - Body must contain: `Closes #<task>`, a reference to the parent ask issue
   when one exists, what was done, and the honest verification results.
 - Commits follow the repo's conventions (`CLAUDE.md`): conventional commits
-  with scope, plus the `Co-Authored-By` trailer the repo's history uses.
+  with scope. Every commit carries two `Co-Authored-By` trailers: the Claude
+  trailer the repo's history uses, and the requesting human — the parent ask
+  issue's author when one exists, otherwise the Operator from the run
+  context — as `Co-Authored-By: <login> <<login>@users.noreply.github.com>`.
+  This keeps git attribution with the person who asked for the change, not
+  just the bots.
 - The PR stays a draft. Marking ready for review is the operator's decision.

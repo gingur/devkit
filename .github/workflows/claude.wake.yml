@@ -51,6 +51,7 @@ concurrency:
 
 jobs:
   wake:
+    name: "Wake ${{ github.event.repository.name }}#${{ github.event.issue.number }}"
     # Only trusted event shapes start (paid) turns on this public repo:
     # - created: a human with repo write (author_association is computed
     #   server-side; CONTRIBUTOR/NONE deliberately excluded) commenting on an
@@ -77,7 +78,7 @@ jobs:
           && contains(github.event.comment.body, '- [x] ')
           && (!contains(github.event.comment.body, '**Submit**')
             || contains(github.event.comment.body, '- [x] **Submit**'))))
-    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - name: Secrets

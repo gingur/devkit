@@ -47,7 +47,8 @@ Derive the current state, then do the single next right thing:
 - **Branch/PR exists and the operator's newest comments request changes** →
   follow-up turn. Check out the existing work branch, apply the feedback,
   verify, and push additional commits to the same branch — the same PR
-  updates. Summary comment as always.
+  updates. Apply feedback surgically — do not refactor unrelated code in a
+  follow-up turn. Summary comment as always.
 - **The task is ambiguous or its acceptance criteria cannot be met as
   written** → do not guess and do not push speculative code. Post a comment
   asking the specific question that unblocks you (or stating exactly which

@@ -45,7 +45,9 @@ Derive the current state, then do the single next right thing:
   and the web where useful. Then post ONE plan comment (format below). Do NOT
   create any issues yet — unless the ask issue body explicitly waives review
   (e.g. "no review needed", "create the tasks directly"), in which case post
-  the plan comment and immediately materialize it (branch below).
+  the plan comment and immediately materialize it (branch below). Do not
+  invent context the ask doesn't support; ambiguity goes to the question
+  branch below, not into assumptions.
 - **Plan exists and it is approved** → materialize: create the task issues
   exactly as proposed (as amended by any operator corrections), then post a
   summary comment. Approval is **only** a ticked `- [x] **Approve**` box on
@@ -144,6 +146,11 @@ is live per issue — the end-of-turn sweep neutralizes the rest.
 
 ## Materializing tasks
 
+- Before creating anything, list the ask's existing open `claude-task`
+  sub-issues (re-run the sub-issues fetch from step 1). If a task with a
+  matching title already exists — e.g. a crashed materialize turn partially
+  completed — skip creating it and reuse the existing issue; never create
+  duplicates.
 - Create one issue per proposed task with `gh issue create` — title from the
   plan, body verbatim from the plan (as amended), label `claude-task` (create
   the label first if it doesn't exist: `gh label create claude-task

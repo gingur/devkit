@@ -145,3 +145,20 @@ runs:
         gh issue comment "$ISSUE" --repo "$REPO" --body "⚠️ @$OPERATOR **$TURN turn did not complete** (status: $STATUS). See the run log: $RUN_URL
 
         Fix the cause, then reply here (any reply starts a new turn) or re-assign the bot — turns are safe to repeat."
+
+    # The one-tap counterpart to the failure comment above — same pattern as
+    # Approve. Panels must be bot-authored or wake's edited-gate can never arm
+    # them, so this posts with GH_BOT_PAT and is best-effort: no PAT (a secrets
+    # fetch failure may be the very thing that failed the turn), no panel; the
+    # github.token comment above already carries the reply path.
+    - name: Retry panel
+      if: inputs.status != 'success'
+      env:
+        ISSUE: ${{ inputs.issue }}
+        REPO: ${{ github.repository }}
+        TURN: ${{ inputs.turn }}
+      shell: bash
+      run: |
+        [[ -z "${GH_BOT_PAT:-}" ]] && { echo 'GH_BOT_PAT absent — skipping the retry panel; replies still start turns'; exit 0; }
+        body=$(printf '<!-- claude:action-panel -->\n\n🎛️ **Your move**\n- [ ] **Retry** — tick to run the %s turn again' "${TURN,,}")
+        GH_TOKEN=$GH_BOT_PAT gh api "repos/$REPO/issues/$ISSUE/comments" --silent -f body="$body"

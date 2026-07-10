@@ -21,7 +21,14 @@ runs:
     - name: Instructions
       id: instructions
       shell: bash
+      env:
+        GH_TOKEN: ${{ env.GH_BOT_PAT }}
+        BOT: ${{ inputs.bot }}
       run: |
+        # Commits must be authored by the bot account (bot_id/bot_name below),
+        # not claude-code-action's github-actions default. Resolved at run
+        # time so the id can never desync from the login.
+        echo "BOT_ID=$(gh api "users/$BOT" --jq .id)" >> "$GITHUB_ENV"
         # claude.agent.md -> system prompt via claude_args: escape for the
         # double-quoted shell-quote value it gets embedded in (backslashes,
         # then quotes, then "$" — claude-code-action's shell-quote parse runs
@@ -45,6 +52,8 @@ runs:
       with:
         claude_code_oauth_token: ${{ env.CLAUDE_CODE_OAUTH_TOKEN }}
         github_token: ${{ env.GH_BOT_PAT }}
+        bot_id: ${{ env.BOT_ID }}
+        bot_name: ${{ inputs.bot }}
         prompt: |
           Run context:
           - Repository: ${{ github.repository }}

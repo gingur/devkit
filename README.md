@@ -671,15 +671,17 @@ code at the PR head, then delivers exactly one verdict:
 
 - **Blocking findings** → it submits one `COMMENT` review — at most 8 inline
   comments, prioritized correctness > repo standards > style — and the PR
-  **stays draft**. The submitted review is the signal an external event layer
-  can consume to start the fix turn.
-- **No blocking findings** → it submits no review; it **marks the PR ready
-  for review** (`gh pr ready`) and posts one comment recording the pass
-  (reviewed SHA, criteria walked). The un-draft is the signal that the bot
-  pass is done and human review starts.
+  **stays draft**. A review on a still-draft PR is the signal an external
+  event layer can consume to start the fix turn.
+- **No blocking findings** → it submits one LGTM `COMMENT` review (reviewed
+  SHA, criteria walked), **marks the PR ready for review** (`gh pr ready`),
+  and requests the operator's review. The un-draft is the signal that the
+  bot pass is done and human review starts.
 
-`APPROVE` / `REQUEST_CHANGES` are never used: GitHub rejects both from a PR's
-own author, and the bot authored the PR — reviews gate nothing here.
+Both verdicts are `COMMENT` reviews — `APPROVE` / `REQUEST_CHANGES` are never
+used: GitHub rejects both from a PR's own author, and the bot authored the
+PR. The operator's real approval is what drives merge — the bot never
+approves.
 
 - **How a review starts:** the event layer (`gingur/hooks`) — or any
   collaborator, manually — assigns the bot to the PR. The job hard-gates on
@@ -692,8 +694,8 @@ own author, and the bot authored the PR — reviews gate nothing here.
   into an implement turn (hooks re-assigns the task issue) live in the event
   layer (`gingur/hooks`).
 - **Hard limits:** comment-and-verdict only — the agent never pushes code,
-  never merges, never assigns anyone; marking ready happens only on the
-  clean pass.
+  never merges, never assigns anyone; the ready-up and the operator review
+  request happen only on the clean pass.
 - **Billing/auth/notifications:** identical to claude.plan / claude.implement
   (Max-subscription OAuth token + `GH_BOT_PAT` via Infisical OIDC; verdicts
   authored by the bot PAT). The turn-end handoff runs on the PR itself — bot

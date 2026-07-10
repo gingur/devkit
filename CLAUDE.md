@@ -162,8 +162,9 @@ Pin to `@main` (the gingur consumer convention).
 ### Self-hosted runner routing
 
 - **Only operator-gated triggers may target the `local` self-hosted runner:**
-  `issues: assigned` (claude.plan, claude.implement), `push` to main (deploy),
-  `workflow_dispatch` (rollback). PR-triggered workflows (verify, preview,
+  `issues: assigned` (claude.plan, claude.implement), `pull_request: assigned`
+  (claude.review — hard-gated to bot-authored, same-repo draft PRs), `push` to
+  main (deploy), `workflow_dispatch` (rollback). PR-triggered workflows (verify, preview,
   preview cleanup, secret scan) always run GitHub-hosted;
   `cf.worker.preview*.yml` deliberately expose no `runner` input.
 - **Wiring:** set the repo variable `RUNNER=local` and pass

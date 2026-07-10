@@ -1,0 +1,113 @@
+name: Review
+
+on:
+  pull_request:
+    types: [assigned]
+  workflow_call:
+    inputs:
+      bot:
+        description: 'Machine-user login that triggers a turn when assigned'
+        type: string
+        required: false
+        default: 'gingur-bot'
+      turns:
+        description: 'Max agent turns per run'
+        type: string
+        required: false
+        default: '50'
+      model:
+        description: 'Model (claude --model value). Review defaults to the strongest tier; empty falls back to the account default.'
+        type: string
+        required: false
+        default: 'fable'
+      infisicalIdentity:
+        description: 'Infisical machine identity UUID with OIDC trust for this repo'
+        type: string
+        required: false
+        default: ''
+      infisicalProject:
+        description: 'Infisical project slug'
+        type: string
+        required: false
+        default: 'gingur'
+      infisicalEnv:
+        description: 'Infisical environment slug'
+        type: string
+        required: false
+        default: 'prod'
+      infisicalPath:
+        description: 'Infisical secret folder path'
+        type: string
+        required: false
+        default: '/infra/github'
+      runner:
+        description: 'Runner label'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+concurrency:
+  group: review-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  review:
+    # All five guards: bot is the assignee, bot authored the PR, the head is a
+    # work branch, same-repo (fork PRs never qualify), and the PR is an open
+    # draft. Assignment is operator-gated (write access, or hooks via the
+    # operator PAT) — this workflow is compute plane only: no intake or cycle
+    # logic lives here (that's gingur/hooks).
+    if: >-
+      github.event.assignee.login == (inputs.bot || 'gingur-bot') &&
+      github.event.pull_request.user.login == (inputs.bot || 'gingur-bot') &&
+      startsWith(github.event.pull_request.head.ref, 'claude/task-') &&
+      github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name &&
+      github.event.pull_request.state == 'open' &&
+      github.event.pull_request.draft
+    # vars.RUNNER fallback: the direct pull_request:assigned trigger has no
+    # caller to pass inputs; in workflow_call mode vars resolves against the
+    # calling repo.
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # Review the PR head itself, not the merge ref checkout defaults to
+          # on pull_request events — findings must match the reviewed SHA.
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Secrets
+        uses: gingur/devkit/actions/infisical.secrets.fetch@main
+        with:
+          identity: ${{ inputs.infisicalIdentity || vars.INFISICAL_IDENTITY }}
+          project: ${{ inputs.infisicalProject || 'gingur' }}
+          env: ${{ inputs.infisicalEnv || 'prod' }}
+          path: ${{ inputs.infisicalPath || '/infra/github' }}
+
+      - name: Review
+        uses: gingur/devkit/actions/claude.review@main
+        with:
+          bot: ${{ inputs.bot || 'gingur-bot' }}
+          turns: ${{ inputs.turns || '50' }}
+          model: ${{ inputs.model || 'fable' }}
+
+      - name: Handoff
+        if: always()
+        uses: gingur/devkit/actions/claude.handoff@main
+        with:
+          # PRs are issues to the assignee/comment APIs — hand off on the PR.
+          issue: ${{ github.event.pull_request.number }}
+          bot: ${{ inputs.bot || 'gingur-bot' }}
+          # Hooks assigns via a PAT, so sender can be the bot itself — fall
+          # back to the repo owner as the operator.
+          operator: ${{ github.event.sender.login != (inputs.bot || 'gingur-bot') && github.event.sender.login || github.repository_owner }}
+          status: ${{ job.status }}
+          turn: Review
+          # No panel: action panels live on ask/task issues only.

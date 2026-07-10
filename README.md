@@ -174,6 +174,7 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 | Scan a PR's commits for leaked secrets              | `gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main`    |
 | Planning agent turn on issue assignment             | `gingur/devkit/.github/workflows/claude.plan.yml@main`               |
 | Implementation agent turn on claude-task assignment | `gingur/devkit/.github/workflows/claude.implement.yml@main`          |
+| Review agent turn on bot draft-PR assignment        | `gingur/devkit/.github/workflows/claude.review.yml@main`             |
 | Start agent turns from trusted comments / ticks     | `gingur/devkit/.github/workflows/claude.wake.yml@main`               |
 
 > Deploy, rollback, verify, secret-scan, and the `claude.*` workflows accept an
@@ -193,6 +194,7 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 | `infisical.secrets.scan`    | `read`     | —          | —                                                                                |
 | `claude.plan`               | `read`     | `write`    | — (requires `issues: write` instead)                                             |
 | `claude.implement`          | `read`     | `write`    | — (requires `issues: write`; pushes/PRs use the bot PAT, not the workflow token) |
+| `claude.review`             | `read`     | `write`    | `write` (verdicts use the bot PAT; requires `issues: write` too)                 |
 | `claude.wake`               | `read`     | `write`    | — (assigns via the bot PAT, not the workflow token)                              |
 
 ## Self-hosted runner (local)
@@ -260,13 +262,18 @@ Only **operator-gated** triggers may target `local`:
 
 - `issues: assigned` — `claude.plan` / `claude.implement` (only collaborators
   can assign);
+- `pull_request: [assigned]` — `claude.review` (only write-access users — or
+  hooks via the operator PAT — can assign; the job additionally hard-gates on
+  bot-authored, same-repo draft `claude/task-*` PRs);
 - `push` to main — `cf.worker.deploy`;
 - `workflow_dispatch` — `cf.worker.rollback`.
 
-PR-triggered workflows (verify, preview, preview cleanup, secret scan)
+Code-driven PR workflows (verify, preview, preview cleanup, secret scan)
 **always stay on GitHub-hosted runners** — a public repo must never run
 PR-driven code on a machine you own. `cf.worker.preview*.yml` deliberately
-have no `runner` input.
+have no `runner` input. `claude.review`'s `pull_request: [assigned]` is the
+deliberate exception: it fires on _assignment_ (operator-gated), never on
+pushed code, so it may take a `runner` input.
 
 ### Consumer wiring
 
@@ -567,7 +574,11 @@ guard), so the two never fire on the same issue.
 This repo is public: turns start only from issue _assignment_ (which only
 collaborators can perform) and from trusted comments or panel ticks via
 [claude.wake](#claudewake--comment-driven-turn-triggers) (gated as described
-there) — still no `pull_request`-family triggers anywhere in the agent surface.
+there). The agent surface's one `pull_request`-family trigger is
+[claude.review](#claudereview--pr-review-agent-turn)'s
+`pull_request: [assigned]` — itself operator-gated (only write-access users,
+or hooks via the operator PAT, can assign) and additionally hard-gated to
+bot-authored, same-repo draft PRs.
 
 ### Notifications
 
@@ -649,6 +660,88 @@ variable.
 | `infisicalEnv`      | `prod`          | Infisical environment slug                                       |
 | `infisicalPath`     | `/infra/github` | folder holding the two secrets                                   |
 | `runner`            | `ubuntu-latest` | runner label                                                     |
+
+## claude.review — PR-review agent turn
+
+The reviewer sibling of claude.plan / claude.implement. Assign the machine
+user (`gingur-bot`) to one of its own draft PRs (head branch `claude/task-<n>`,
+opened by claude.implement) and a Claude agent takes one **review turn**: it
+reads the PR diff, the task issue's acceptance criteria, and the checked-out
+code at the PR head, then delivers exactly one verdict:
+
+- **Blocking findings** → it submits one `COMMENT` review — at most 8 inline
+  comments, prioritized correctness > repo standards > style — and the PR
+  **stays draft**. The submitted review is the signal an external event layer
+  can consume to start the fix turn.
+- **No blocking findings** → it submits no review; it **marks the PR ready
+  for review** (`gh pr ready`) and posts one comment recording the pass
+  (reviewed SHA, criteria walked). The un-draft is the signal that the bot
+  pass is done and human review starts.
+
+`APPROVE` / `REQUEST_CHANGES` are never used: GitHub rejects both from a PR's
+own author, and the bot authored the PR — reviews gate nothing here.
+
+- **How a review starts:** the event layer (`gingur/hooks`) — or any
+  collaborator, manually — assigns the bot to the PR. The job hard-gates on
+  **all five**: the assignee is the bot; the PR is bot-authored; the head
+  branch is `claude/task-*`; head repo == base repo (fork PRs never qualify);
+  the PR is an open draft.
+- **Compute plane only:** the workflow contains **no** intake or cycle logic
+  — no auto-request of the next round, no rounds cap, no already-reviewed
+  dedup. Deciding _when_ a review fires and looping a submitted review back
+  into an implement turn (hooks re-assigns the task issue) live in the event
+  layer (`gingur/hooks`).
+- **Hard limits:** comment-and-verdict only — the agent never pushes code,
+  never merges, never assigns anyone; marking ready happens only on the
+  clean pass.
+- **Billing/auth/notifications:** identical to claude.plan / claude.implement
+  (Max-subscription OAuth token + `GH_BOT_PAT` via Infisical OIDC; verdicts
+  authored by the bot PAT). The turn-end handoff runs on the PR itself — bot
+  unassigned, operator assigned — and posts **no** action panel (panels live
+  on ask/task issues only).
+
+### Consumer workflow (copy-paste)
+
+```yaml
+# .github/workflows/review.yml
+name: Review
+on:
+  pull_request:
+    types: [assigned]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  review:
+    uses: gingur/devkit/.github/workflows/claude.review.yml@main
+    with:
+      infisicalIdentity: <machine identity UUID>
+```
+
+Same per-repo requirements as claude.plan; in `devkit` itself the workflow
+self-triggers and reads the identity from the `INFISICAL_IDENTITY` Actions
+variable. On the "no `pull_request` triggers" stance: `pull_request:
+[assigned]` is the one deliberate exception — assignment is operator-gated
+(only write-access users, or hooks via the operator PAT, can assign), unlike
+code-driven `pull_request` events, and the job additionally hard-gates on
+bot-authored, same-repo, draft `claude/task-*` PRs. That is also why this
+workflow may take a `runner` input while the preview workflows may not (see
+[Routing policy](#routing-policy-public-repos)).
+
+| Input               | Default         | Notes                                                    |
+| ------------------- | --------------- | -------------------------------------------------------- |
+| `bot`               | `gingur-bot`    | machine-user login the trigger guards on                 |
+| `turns`             | `50`            | max agent turns per run (cost bound)                     |
+| `model`             | `fable`         | `claude --model` value (review defaults to the top tier) |
+| `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)  |
+| `infisicalProject`  | `gingur`        | Infisical project slug                                   |
+| `infisicalEnv`      | `prod`          | Infisical environment slug                               |
+| `infisicalPath`     | `/infra/github` | folder holding the two secrets                           |
+| `runner`            | `ubuntu-latest` | runner label                                             |
 
 ## claude.wake — comment-driven turn triggers
 

@@ -1,0 +1,88 @@
+name: 'Claude review turn'
+description: 'One review turn on the triggering bot-authored draft PR: reconcile PR + task state, review the diff against the task acceptance criteria and repo standards, then either submit one blocking COMMENT review (PR stays draft) or mark the PR ready for operator review. Requires CLAUDE_CODE_OAUTH_TOKEN and GH_BOT_PAT in env (use infisical.secrets.fetch first). Billed to the Claude Max subscription.'
+
+inputs:
+  bot:
+    description: 'Machine-user login the workflow triggers on (the agent identity)'
+    required: false
+    default: 'gingur-bot'
+  turns:
+    description: 'Max agent turns per run (cost bound)'
+    required: false
+    default: '50'
+  model:
+    description: 'Model (claude --model value). Review defaults to the strongest tier; empty falls back to the account default.'
+    required: false
+    default: 'fable'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Instructions
+      id: instructions
+      shell: bash
+      env:
+        HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      run: |
+        # claude.agent.md -> system prompt via claude_args: escape for the
+        # double-quoted shell-quote value it gets embedded in (backslashes,
+        # then quotes, then "$" — claude-code-action's shell-quote parse runs
+        # env-less, so an unescaped $WORD would be substituted with empty
+        # string). The file must contain no line starting with "#" (stripped
+        # by CCA). TASK derives the task issue number from the work-branch
+        # convention claude/task-<n> (guarded by the workflow's startsWith).
+        {
+          echo 'AGENT_MD<<EOF_9c4e1b'
+          sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\$/\\$/g' "${GITHUB_ACTION_PATH}/../claude.agent.md"
+          echo 'EOF_9c4e1b'
+          echo 'TASK_MD<<EOF_9c4e1b'
+          cat "${GITHUB_ACTION_PATH}/prompt.md"
+          echo 'EOF_9c4e1b'
+          echo "TASK=${HEAD_REF#claude/task-}"
+          echo "TURN_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        } >> "$GITHUB_ENV"
+
+    - name: Review
+      uses: anthropics/claude-code-action@v1
+      env:
+        GH_TOKEN: ${{ env.GH_BOT_PAT }}
+      with:
+        claude_code_oauth_token: ${{ env.CLAUDE_CODE_OAUTH_TOKEN }}
+        github_token: ${{ env.GH_BOT_PAT }}
+        prompt: |
+          Run context:
+          - Repository: ${{ github.repository }}
+          - Pull request: #${{ github.event.pull_request.number }} (branch ${{ github.event.pull_request.head.ref }}, head SHA ${{ github.event.pull_request.head.sha }} — checked out in the workspace)
+          - Task issue: #${{ env.TASK }}
+          - Your bot login: ${{ inputs.bot }}
+          - Operator (the human this turn): ${{ github.event.sender.login != inputs.bot && github.event.sender.login || github.repository_owner }}
+          - Turn budget: ${{ inputs.turns }} agent turns (the --max-turns hard cap)
+
+          ${{ env.TASK_MD }}
+        claude_args: |
+          --dangerously-skip-permissions
+          --max-turns ${{ inputs.turns }}
+          ${{ inputs.model && format('--model {0}', inputs.model) || '' }}
+          --append-system-prompt "${{ env.AGENT_MD }}"
+
+    # The reviewer's contract is one verdict per turn: a submitted review
+    # (blocking path) or a PR comment (clean pass / blocker report). A run
+    # that "succeeds" silently burns real quota with the operator none the
+    # wiser — fail the job instead, so the handoff posts the failure comment
+    # and returns the baton.
+    - name: Verify
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+        BOT: ${{ inputs.bot }}
+      shell: bash
+      run: |
+        r=$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate \
+          --jq "[.[] | select(.user.login == \"$BOT\" and .submitted_at >= \"$TURN_STARTED\")] | length")
+        c=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+          --jq "[.[] | select(.user.login == \"$BOT\" and .created_at >= \"$TURN_STARTED\")] | length")
+        if [[ "$r" -eq 0 && "$c" -eq 0 ]]; then
+          echo "::error::review turn ended without posting a PR review or comment (contract: one verdict per turn)"
+          exit 1
+        fi

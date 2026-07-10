@@ -14,6 +14,10 @@ inputs:
   turn:
     description: 'Human word naming the turn kind for the comment text (e.g., Planning, Implementation)'
     required: true
+  issue:
+    description: 'Issue or PR number to hand off (PRs are issues to the assignee/comment/reactions APIs — PR-triggered callers pass github.event.pull_request.number)'
+    required: false
+    default: ${{ github.event.issue.number }}
   panel:
     description: 'Markdown body for the default action-panel comment posted on success. Empty posts nothing; suppressed when the agent posted its own panel this turn.'
     required: false
@@ -25,7 +29,7 @@ runs:
     - name: Handoff
       env:
         GH_TOKEN: ${{ github.token }}
-        ISSUE: ${{ github.event.issue.number }}
+        ISSUE: ${{ inputs.issue }}
         REPO: ${{ github.repository }}
         BOT: ${{ inputs.bot }}
         OPERATOR: ${{ inputs.operator }}
@@ -40,7 +44,7 @@ runs:
     # job env, like Panels); best-effort when it's absent.
     - name: Unack
       env:
-        ISSUE: ${{ github.event.issue.number }}
+        ISSUE: ${{ inputs.issue }}
         REPO: ${{ github.repository }}
         BOT: ${{ inputs.bot }}
       shell: bash
@@ -71,7 +75,7 @@ runs:
       if: inputs.status == 'success'
       env:
         GH_TOKEN: ${{ github.token }}
-        ISSUE: ${{ github.event.issue.number }}
+        ISSUE: ${{ inputs.issue }}
         REPO: ${{ github.repository }}
         BOT: ${{ inputs.bot }}
         PANEL: ${{ inputs.panel }}
@@ -130,7 +134,7 @@ runs:
       if: inputs.status != 'success'
       env:
         GH_TOKEN: ${{ github.token }}
-        ISSUE: ${{ github.event.issue.number }}
+        ISSUE: ${{ inputs.issue }}
         REPO: ${{ github.repository }}
         OPERATOR: ${{ inputs.operator }}
         STATUS: ${{ inputs.status }}

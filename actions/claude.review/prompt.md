@@ -97,7 +97,9 @@ real approval is what drives merge downstream — the bot never approves.
   ```bash
   gh pr review <pr> --repo <owner>/<repo> --comment --body "<LGTM record>"
   gh pr ready <pr> --repo <owner>/<repo>
-  gh pr edit <pr> --repo <owner>/<repo> --add-reviewer <operator>
+  # REST, not `gh pr edit --add-reviewer`: that command's GraphQL query
+  # needs read:org, which the bot PAT deliberately lacks.
+  gh api "repos/<owner>/<repo>/pulls/<pr>/requested_reviewers" -f "reviewers[]=<operator>"
   ```
 
   The un-draft plus the review request signal that the bot review pass is

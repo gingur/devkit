@@ -538,11 +538,12 @@ gh variable set INFISICAL_IDENTITY --repo gingur/<repo> --body "$ID"
 
 ### 4. Caller workflows
 
-Add the three thin callers from the copy-paste blocks below
-([plan](#consumer-workflow-copy-paste) /
-[implement](#consumer-workflow-copy-paste-1) /
-[wake](#consumer-workflow-copy-paste-2)) to
-`.github/workflows/{plan,implement,wake}.yml` on the default branch. Every
+Add the four thin callers from the copy-paste blocks below
+([plan](#claudeplan--issue-driven-planning-agent) /
+[implement](#claudeimplement--issue-driven-implementation-agent) /
+[review](#claudereview--pr-review-agent-turn) /
+[wake](#claudewake--comment-driven-turn-triggers)) to
+`.github/workflows/{plan,implement,review,wake}.yml` on the default branch. Every
 caller **must** pass `runner: ${{ vars.RUNNER }}` — a caller repo's variables
 don't resolve in the reusable's own `runs-on`, so omitting it silently runs
 GitHub-hosted (bit us: gingur/hooks, 2026-07-10). The identity needs no
@@ -810,7 +811,7 @@ jobs:
   review:
     uses: gingur/devkit/.github/workflows/claude.review.yml@main
     with:
-      infisicalIdentity: <machine identity UUID>
+      runner: ${{ vars.RUNNER }}
 ```
 
 Same per-repo requirements as claude.plan; in `devkit` itself the workflow

@@ -167,9 +167,12 @@ Pin to `@main` (the gingur consumer convention).
   preview cleanup, secret scan) always run GitHub-hosted;
   `cf.worker.preview*.yml` deliberately expose no `runner` input.
 - **Wiring:** set the repo variable `RUNNER=local` and pass
-  `runner: ${{ vars.RUNNER }}` in the deploy / rollback caller workflows;
-  `claude.plan.yml` and `claude.implement.yml` read `vars.RUNNER` on their
-  own. An unset/empty variable
+  `runner: ${{ vars.RUNNER }}` in **every** caller workflow (agent callers —
+  plan / implement / wake — and deploy / rollback alike). A caller repo's
+  variables do not resolve inside a cross-repo reusable workflow, so the
+  reusables' own `vars.RUNNER` fallback only works for devkit's direct
+  triggers — a consumer that omits the input silently runs GitHub-hosted
+  (bit us: gingur/hooks, 2026-07-10). An unset/empty variable
   falls back to `ubuntu-latest`, so flipping local ↔ hosted is a repo-variable
   change with no commit. Provisioning:
   [README → Self-hosted runner (local)](./README.md#self-hosted-runner-local).

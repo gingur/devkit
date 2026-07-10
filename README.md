@@ -480,6 +480,95 @@ wrangler versions list --env production
 wrangler rollback <version-id> --env production --message "manual rollback"
 ```
 
+## Enrolling a repo in the agent flow
+
+The complete runbook for putting `gingur-bot` to work on a `gingur/<repo>`
+(plan / implement / wake). Everything is idempotent; re-running a step is
+safe. Executed for `hooks` (2026-07-09) and `infra` (2026-07-10).
+
+### 1. Bot access
+
+Invite the machine user with **write** and accept the invitation as the bot
+(PAT injected from Infisical — never exported or echoed):
+
+```bash
+gh api -X PUT repos/gingur/<repo>/collaborators/gingur-bot -f permission=push
+infisical run --projectId 8baa69d9-e071-4999-9300-4e0f938c0ff5 --env prod --path /infra/github --silent -- bash -c '
+  inv=$(GH_TOKEN="$GH_BOT_PAT" gh api /user/repository_invitations --jq ".[] | select(.repository.full_name==\"gingur/<repo>\") | .id")
+  [[ -n "$inv" ]] && GH_TOKEN="$GH_BOT_PAT" gh api -X PATCH "/user/repository_invitations/$inv" >/dev/null && echo accepted'
+```
+
+### 2. Labels
+
+```bash
+gh label create claude-ask  --repo gingur/<repo> --description "agent ask issue — operator replies drive turns" --color 1d76db
+gh label create claude-task --repo gingur/<repo> --description "agent-implementable task" --color 5319e7
+```
+
+### 3. Infisical machine identity (one per repo)
+
+Each repo gets its own identity, OIDC-bound to that repo's Actions runs and
+readable **only** on `prod` `/infra/github` (least privilege — a compromised
+repo can't read another folder). Ambient `infisical login` session; the token
+goes through a header file, never a printed env:
+
+```bash
+TOKEN=$(infisical user get token --plain); printf 'Authorization: Bearer %s\n' "$TOKEN" > /tmp/ih
+# 3a. identity (org 38c5db11-6181-40bb-9796-86e8289b6bb9)
+ID=$(curl -s -X POST -H @/tmp/ih -H 'Content-Type: application/json' https://app.infisical.com/api/v1/identities \
+  -d '{"name":"gh-<repo>-agents","organizationId":"38c5db11-6181-40bb-9796-86e8289b6bb9","role":"no-access"}' | jq -r .identity.id)
+# 3b. GitHub-Actions OIDC binding (subject pins the repo, main ref)
+curl -s -X POST -H @/tmp/ih -H 'Content-Type: application/json' "https://app.infisical.com/api/v1/auth/oidc-auth/identities/$ID" \
+  -d '{"oidcDiscoveryUrl":"https://token.actions.githubusercontent.com","boundIssuer":"https://token.actions.githubusercontent.com","boundAudiences":"https://github.com/gingur","boundClaims":{},"boundSubject":"repo:gingur/<repo>:ref:refs/heads/main","accessTokenTTL":2592000,"accessTokenMaxTTL":2592000,"accessTokenNumUsesLimit":0,"accessTokenTrustedIps":[{"ipAddress":"0.0.0.0/0"},{"ipAddress":"::/0"}]}'
+# 3c. membership in the gingur project (id 8baa69d9-e071-4999-9300-4e0f938c0ff5), no-access base role
+curl -s -X POST -H @/tmp/ih -H 'Content-Type: application/json' "https://app.infisical.com/api/v2/workspace/8baa69d9-e071-4999-9300-4e0f938c0ff5/identity-memberships/$ID" -d '{"role":"no-access"}'
+# 3d. path-scoped read privilege: prod + /infra/github only
+curl -s -X POST -H @/tmp/ih -H 'Content-Type: application/json' https://app.infisical.com/api/v2/identity-project-additional-privilege \
+  -d "{\"identityId\":\"$ID\",\"projectId\":\"8baa69d9-e071-4999-9300-4e0f938c0ff5\",\"slug\":\"read-infra-github\",\"permissions\":[{\"action\":[\"describeSecret\",\"readValue\"],\"subject\":\"secrets\",\"conditions\":{\"environment\":{\"\$eq\":\"prod\"},\"secretPath\":{\"\$glob\":\"/infra/github\"}}}],\"type\":{\"isTemporary\":false}}"
+rm /tmp/ih
+gh variable set INFISICAL_IDENTITY --repo gingur/<repo> --body "$ID"
+```
+
+### 4. Caller workflows
+
+Add the three thin callers from the copy-paste blocks below
+([plan](#consumer-workflow-copy-paste) /
+[implement](#consumer-workflow-copy-paste-1) /
+[wake](#consumer-workflow-copy-paste-2)) to
+`.github/workflows/{plan,implement,wake}.yml` on the default branch. Every
+caller **must** pass `runner: ${{ vars.RUNNER }}` — a caller repo's variables
+don't resolve in the reusable's own `runs-on`, so omitting it silently runs
+GitHub-hosted (bit us: gingur/hooks, 2026-07-10). The identity needs no
+input: the reusables read the repo's `INFISICAL_IDENTITY` variable.
+
+### 5. Box runner (optional)
+
+Route the repo's operator-gated turns to the Gingur Box:
+
+```bash
+gingur-runner-add <repo>   # sets RUNNER=local, regenerates the overlay, hot-loads the stack
+```
+
+Leave `RUNNER` unset to stay GitHub-hosted. Tooling lives in
+[gingur/infra `box/`](https://github.com/gingur/infra/tree/main/box).
+
+### 6. Verify + breadcrumb
+
+- `gh api repos/gingur/<repo>/actions/runners` → `gingur-box … online` (if opted in)
+- Assign a first issue to `gingur-bot` → a Plan run appears and completes.
+- Add a short **Agent flow** section to the repo's `CLAUDE.md` linking here,
+  so any future session (Claude Code, Desktop, web) can find the workflow:
+
+```markdown
+## Agent flow (gingur-bot)
+
+This repo is enrolled in the devkit agent flow: assign an issue to
+`gingur-bot` for a plan; approve via the action panel; task issues are
+implemented to draft PRs. Runbook + operator guide:
+https://github.com/gingur/devkit#enrolling-a-repo-in-the-agent-flow and the
+claude.plan / claude.implement / claude.wake sections below it.
+```
+
 ## claude.plan — issue-driven planning agent
 
 Assign an issue to the machine user (`gingur-bot`) and a Claude agent takes
@@ -536,7 +625,7 @@ jobs:
   plan:
     uses: gingur/devkit/.github/workflows/claude.plan.yml@main
     with:
-      infisicalIdentity: <machine identity UUID>
+      runner: ${{ vars.RUNNER }}
 ```
 
 The trigger stays `on: issues: [assigned]` — do **not** add `issue_comment`
@@ -628,7 +717,7 @@ jobs:
   implement:
     uses: gingur/devkit/.github/workflows/claude.implement.yml@main
     with:
-      infisicalIdentity: <machine identity UUID>
+      runner: ${{ vars.RUNNER }}
 ```
 
 The trigger stays `on: issues: [assigned]` — as with claude.plan, do **not**
@@ -716,7 +805,7 @@ jobs:
   wake:
     uses: gingur/devkit/.github/workflows/claude.wake.yml@main
     with:
-      infisicalIdentity: <machine identity UUID>
+      runner: ${{ vars.RUNNER }}
 ```
 
 This caller lives alongside the claude.plan / claude.implement callers and is

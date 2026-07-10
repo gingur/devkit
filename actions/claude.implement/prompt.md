@@ -122,4 +122,8 @@ must say so explicitly — never imply checks passed that didn't run.
   context — as `Co-Authored-By: <login> <<login>@users.noreply.github.com>`.
   This keeps git attribution with the person who asked for the change, not
   just the bots.
+- Never bypass git hooks: no `--no-verify`/`-n` on commit or push, and no
+  hooks-path overrides. Pre-commit hooks (lint-staged, secret scan) are part
+  of verification — if a hook fails, fix the cause; if a hook is genuinely
+  broken, say so in the summary comment instead of skipping it.
 - The PR stays a draft. Marking ready for review is the operator's decision.

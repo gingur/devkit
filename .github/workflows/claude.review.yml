@@ -58,6 +58,7 @@ concurrency:
 
 jobs:
   review:
+    name: "Review ${{ github.event.repository.name }}#${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}"
     # All five guards: bot is the assignee, bot authored the PR, the head is a
     # work branch, same-repo (fork PRs never qualify), and the PR is an open
     # draft. Assignment is operator-gated (write access, or hooks via the

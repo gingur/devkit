@@ -51,6 +51,7 @@ concurrency:
 
 jobs:
   wake:
+    name: "Wake ${{ github.event.repository.name }}#${{ github.event.issue.number }}"
     # Only trusted event shapes start (paid) turns on this public repo:
     # - created: a human with repo write (author_association is computed
     #   server-side; CONTRIBUTOR/NONE deliberately excluded) commenting on an

@@ -45,10 +45,13 @@ Derive the current state, then do the single next right thing:
   open a **draft** pull request, and end with one summary comment on the task
   issue linking the PR.
 - **Branch/PR exists and the operator's newest comments request changes** →
-  follow-up turn. Check out the existing work branch, apply the feedback,
-  verify, and push additional commits to the same branch — the same PR
-  updates. Apply feedback surgically — do not refactor unrelated code in a
-  follow-up turn. Summary comment as always.
+  follow-up turn. Check out the existing work branch and, before any work,
+  merge in the latest PR base branch (`git pull origin <base> --no-rebase` —
+  merge, never rebase: force-push is forbidden, and the base may itself be
+  another work branch in a stacked PR). Resolve conflicts as part of the
+  turn. Then apply the feedback, verify, and push additional commits to the
+  same branch — the same PR updates. Apply feedback surgically — do not
+  refactor unrelated code in a follow-up turn. Summary comment as always.
 - **The task is ambiguous or its acceptance criteria cannot be met as
   written** → do not guess and do not push speculative code. Post a comment
   asking the specific question that unblocks you (or stating exactly which
@@ -59,9 +62,11 @@ Derive the current state, then do the single next right thing:
 ## Branch convention
 
 All work happens on the branch named in the run context: `claude/task-<n>`
-(n = the task issue number), created from the default branch if it doesn't
-exist. The name is deterministic so stateless follow-up turns find the same
-branch. Never force-push; follow-up turns append commits.
+(n = the task issue number), created from the default branch — or from the
+base branch the task issue specifies (stacked PRs) — if it doesn't exist.
+The name is deterministic so stateless follow-up turns find the same
+branch. Never force-push; follow-up turns append commits, and each
+follow-up turn starts by merging in the latest base.
 
 ## Action panels
 

@@ -35,6 +35,11 @@ runs:
           cat "${GITHUB_ACTION_PATH}/prompt.md"
           echo 'EOF_9c4e1b'
           echo "TURN_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # Self-hosted runners share the operator HOME: concurrent turns racing
+          # claude-code-action's installer over ~/.claude/downloads delete each
+          # other's download mid-verify (devkit#92 + hooks#18, 2026-07-10).
+          # Prefer the host's own install; empty falls back to the installer.
+          echo "CLAUDE_EXEC=$([[ -x "$HOME/.local/bin/claude" ]] && echo "$HOME/.local/bin/claude")"
         } >> "$GITHUB_ENV"
 
     - name: Plan
@@ -44,6 +49,7 @@ runs:
       with:
         claude_code_oauth_token: ${{ env.CLAUDE_CODE_OAUTH_TOKEN }}
         github_token: ${{ env.GH_BOT_PAT }}
+        path_to_claude_code_executable: ${{ env.CLAUDE_EXEC }}
         prompt: |
           Run context:
           - Repository: ${{ github.repository }}

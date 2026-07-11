@@ -55,21 +55,26 @@ jobs:
     # Only trusted event shapes start (paid) turns on this public repo:
     # - created: a human with repo write (author_association is computed
     #   server-side; CONTRIBUTOR/NONE deliberately excluded) commenting on an
-    #   enrolled open issue, unless prefixed [hold] (comment without waking).
-    # - edited: a checkbox tick in a bot-authored action panel. No association
-    #   check needed — only users with write access can edit another user's
-    #   comment; author == bot + the panel marker restricts it to panels;
-    #   requiring "- [x] " ignores untick-only edits; the Submit clause arms
-    #   multi-select panels only once their final **Submit** box is ticked.
+    #   enrolled open issue. PRs are carved out of THIS path only (plain PR
+    #   replies stay inert — assignment is the PR reply path), as is any
+    #   comment prefixed [hold] (comment without waking).
+    # - edited: a checkbox tick in a bot-authored action panel — on issues AND
+    #   PRs (issue_comment fires for PR conversation comments, and PR labels
+    #   surface in issue.labels, so the top-level label gate covers both
+    #   uniformly). No association check needed — only users with write access
+    #   can edit another user's comment; author == bot + the panel marker
+    #   restricts it to panels; requiring "- [x] " ignores untick-only edits;
+    #   the Submit clause arms multi-select panels only once their final
+    #   **Submit** box is ticked.
     # Top-level sender != bot keeps the agent's own PAT-authored posts/edits
     # (which do fire events) from self-triggering.
     if: >-
-      !github.event.issue.pull_request
-      && github.event.issue.state == 'open'
+      github.event.issue.state == 'open'
       && (contains(github.event.issue.labels.*.name, 'claude-ask')
         || contains(github.event.issue.labels.*.name, 'claude-task'))
       && github.event.sender.login != (inputs.bot || 'gingur-bot')
       && ((github.event.action == 'created'
+          && !github.event.issue.pull_request
           && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
           && !startsWith(github.event.comment.body, '[hold]'))
         || (github.event.action == 'edited'
@@ -122,6 +127,9 @@ jobs:
           # The PAT (not github.token) so the assigned event triggers the agent
           # workflows. Remove-then-add so it fires even when the bot is already
           # assigned (comment landed mid-turn); the agent workflows' per-issue
-          # concurrency queues the extra turn instead of losing it.
+          # concurrency queues the extra turn instead of losing it. PRs are
+          # issues to gh issue edit's assignee flags (claude.handoff runs the
+          # same edit against PR numbers in production), so panel ticks on PRs
+          # dispatch here too — assignment then fires the review workflow.
           gh issue edit "$ISSUE" --repo "$REPO" --remove-assignee "$BOT"
           gh issue edit "$ISSUE" --repo "$REPO" --add-assignee "$BOT"

@@ -113,6 +113,11 @@ real approval is what drives merge downstream — the bot never approves.
   panels — turn wiring belongs to the workflow and the external event layer,
   not to you. The **only** reviewer you ever request is the operator, on the
   no-blocking-findings path.
+- If you post an action panel, it MUST be a conversation-tab comment (the
+  `issue_comment` event family — what `gh pr comment` posts). Checkboxes
+  embedded in a review body (`pull_request_review`) or in inline review
+  comments (`pull_request_review_comment`) are wake-invisible — never put
+  actionable boxes there.
 - Mark the PR ready for review **only** on the no-blocking-findings path —
   never alongside a blocking review.
 - Your verdict (the submitted review) IS this turn's summary — it lands on

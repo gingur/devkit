@@ -111,4 +111,7 @@ jobs:
           operator: ${{ github.event.sender.login != (inputs.bot || 'gingur-bot') && github.event.sender.login || github.repository_owner }}
           status: ${{ job.status }}
           turn: Review
-          # No panel: action panels live on ask/task issues only.
+          # No default panel by design: panels are live on PRs (wake's
+          # edited path admits them via the PR's claude-task label), but a
+          # review turn ends in a verdict, not a standing question — the
+          # reviewer posts its own panel when it needs one.

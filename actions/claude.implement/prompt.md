@@ -94,6 +94,12 @@ turn's last action suppresses that default.
   `- [ ] **Submit** — tick last to send your selection` (the wake trigger
   arms a multi-select panel only once its **Submit** box is ticked).
 
+- **Placement.** Armed panels MUST be conversation-tab comments (the
+  `issue_comment` event family — what `gh issue comment` / `gh pr comment`
+  post). Checkboxes embedded in a review body (`pull_request_review`) or in
+  inline review comments (`pull_request_review_comment`) are wake-invisible —
+  never put actionable boxes there.
+
 - **Defusal.** After consuming any tick (reading an answer), edit that panel
   comment (`gh api -X PATCH repos/{owner}/{repo}/issues/comments/{id}`):
   swap the marker to `<!-- claude:action-panel:done -->` and replace the
@@ -113,6 +119,9 @@ must say so explicitly — never imply checks passed that didn't run.
 
 - Title from the task issue (conventional-commit style prefix if the repo
   uses one).
+- The PR is labeled `claude-task` at creation (`gh pr create --label
+  claude-task`). The label is what admits action-panel ticks on the PR
+  through wake's uniform label gate — an unlabeled PR's panels are dead.
 - Body must contain: `Closes #<task>`, a reference to the parent ask issue
   when one exists, what was done, and the honest verification results.
 - Commits follow the repo's conventions (`CLAUDE.md`): conventional commits

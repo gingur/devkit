@@ -24,28 +24,12 @@ runs:
       env:
         HEAD_REF: ${{ github.event.pull_request.head.ref }}
       run: |
-        # claude.agent.md -> system prompt via claude_args: escape for the
-        # double-quoted shell-quote value it gets embedded in (backslashes,
-        # then quotes, then "$" — claude-code-action's shell-quote parse runs
-        # env-less, so an unescaped $WORD would be substituted with empty
-        # string). The file must contain no line starting with "#" (stripped
-        # by CCA). TASK derives the task issue number from the work-branch
-        # convention claude/task-<n> (guarded by the workflow's startsWith).
-        {
-          echo 'AGENT_MD<<EOF_9c4e1b'
-          sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\$/\\$/g' "${GITHUB_ACTION_PATH}/../claude.agent.md"
-          echo 'EOF_9c4e1b'
-          echo 'TASK_MD<<EOF_9c4e1b'
-          cat "${GITHUB_ACTION_PATH}/prompt.md"
-          echo 'EOF_9c4e1b'
-          echo "TASK=${HEAD_REF#claude/task-}"
-          echo "TURN_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          # Self-hosted runners share the operator HOME: concurrent turns racing
-          # claude-code-action's installer over ~/.claude/downloads delete each
-          # other's download mid-verify (devkit#92 + hooks#18, 2026-07-10).
-          # Prefer the host's own install; empty falls back to the installer.
-          echo "CLAUDE_EXEC=$([[ -x "$HOME/.local/bin/claude" ]] && echo "$HOME/.local/bin/claude")"
-        } >> "$GITHUB_ENV"
+        # Emits AGENT_MD/TASK_MD/TURN_STARTED/CLAUDE_EXEC — rationale in claude.lib/turn.sh.
+        . "${GITHUB_ACTION_PATH}/../claude.lib/turn.sh"
+        turn_instructions TASK_MD
+        # TASK derives the task issue number from the work-branch convention
+        # claude/task-<n> (guarded by the workflow's startsWith).
+        echo "TASK=${HEAD_REF#claude/task-}" >> "$GITHUB_ENV"
 
     - name: Review
       uses: anthropics/claude-code-action@v1

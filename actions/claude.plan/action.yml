@@ -22,25 +22,9 @@ runs:
       id: instructions
       shell: bash
       run: |
-        # agent.md -> system prompt via claude_args: escape for the double-quoted
-        # shell-quote value it gets embedded in (backslashes, then quotes, then
-        # "$" — claude-code-action's shell-quote parse runs env-less, so an
-        # unescaped $WORD would be substituted with empty string).
-        # agent.md must contain no line starting with "#" (stripped by CCA).
-        {
-          echo 'AGENT_MD<<EOF_9c4e1b'
-          sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\$/\\$/g' "${GITHUB_ACTION_PATH}/../claude.agent.md"
-          echo 'EOF_9c4e1b'
-          echo 'PLAN_MD<<EOF_9c4e1b'
-          cat "${GITHUB_ACTION_PATH}/prompt.md"
-          echo 'EOF_9c4e1b'
-          echo "TURN_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          # Self-hosted runners share the operator HOME: concurrent turns racing
-          # claude-code-action's installer over ~/.claude/downloads delete each
-          # other's download mid-verify (devkit#92 + hooks#18, 2026-07-10).
-          # Prefer the host's own install; empty falls back to the installer.
-          echo "CLAUDE_EXEC=$([[ -x "$HOME/.local/bin/claude" ]] && echo "$HOME/.local/bin/claude")"
-        } >> "$GITHUB_ENV"
+        # Emits AGENT_MD/PLAN_MD/TURN_STARTED/CLAUDE_EXEC — rationale in claude.lib/turn.sh.
+        . "${GITHUB_ACTION_PATH}/../claude.lib/turn.sh"
+        turn_instructions PLAN_MD
 
     - name: Plan
       uses: anthropics/claude-code-action@v1
@@ -65,10 +49,6 @@ runs:
           ${{ inputs.model && format('--model {0}', inputs.model) || '' }}
           --append-system-prompt "${{ env.AGENT_MD }}"
 
-    # The agent's contract is at least one comment per turn (its summary, or a
-    # blocker report). A run that "succeeds" silently burns real quota with the
-    # operator none the wiser — fail the job instead, so the handoff posts the
-    # failure comment and returns the baton.
     - name: Verify
       env:
         GH_TOKEN: ${{ github.token }}
@@ -77,9 +57,6 @@ runs:
         BOT: ${{ inputs.bot }}
       shell: bash
       run: |
-        n=$(gh api "repos/$REPO/issues/$ISSUE/comments" --paginate \
-          --jq "[.[] | select(.user.login == \"$BOT\" and .created_at >= \"$TURN_STARTED\")] | length")
-        if [[ "$n" -eq 0 ]]; then
-          echo "::error::agent turn ended without posting any comment (contract: at least one per turn)"
-          exit 1
-        fi
+        # Comment-contract check — rationale in claude.lib/turn.sh.
+        . "${GITHUB_ACTION_PATH}/../claude.lib/turn.sh"
+        turn_verify

@@ -1,13 +1,48 @@
 name: Review
-# run-name embeds the PR number so the hooks service can correlate the
-# completed run (workflow_run.display_title) back to its PR for review-fire/turn-end.
-run-name: 'Review #${{ github.event.pull_request.number }}'
+# run-name carries both correlation tokens for the hooks service
+# (workflow_run.display_title): `[d:<uuid>]` is the primary token — the
+# dispatch-ledger key for service-dispatched runs — and `#N` stays as the
+# human display plus the hooks legacy fallback for assignment-triggered runs.
+# This run-name covers only devkit's own direct/dispatch runs — consumer
+# callers set their own.
+run-name: "Review #${{ inputs.pr || github.event.pull_request.number }}${{ inputs.dispatch && format(' [d:{0}]', inputs.dispatch) || '' }}"
 
 on:
   pull_request:
     types: [assigned]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Pull request number the turn reviews'
+        type: string
+        required: true
+      dispatch:
+        description: 'Hooks-service dispatch id, surfaced in run-name for run correlation'
+        type: string
+        required: false
+        default: ''
+      operator:
+        description: 'Human login for handoff; empty falls back to the event sender'
+        type: string
+        required: false
+        default: ''
   workflow_call:
     inputs:
+      pr:
+        description: 'Pull request number the turn reviews (empty falls back to the triggering pull_request event)'
+        type: string
+        required: false
+        default: ''
+      dispatch:
+        description: 'Hooks-service dispatch id, surfaced in run-name for run correlation'
+        type: string
+        required: false
+        default: ''
+      operator:
+        description: 'Human login for handoff; empty falls back to the event sender'
+        type: string
+        required: false
+        default: ''
       bot:
         description: 'Machine-user login that triggers a turn when assigned'
         type: string
@@ -56,36 +91,93 @@ permissions:
   id-token: write
 
 concurrency:
-  group: review-${{ github.event.pull_request.number }}
+  group: review-${{ inputs.pr || github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
   review:
-    name: 'Review ${{ github.event.repository.name }}#${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}'
+    name: "Review ${{ github.event.repository.name }}#${{ inputs.pr || github.event.pull_request.number }}${{ github.event.pull_request.title && format(': {0}', github.event.pull_request.title) || '' }}"
     # All five guards: bot is the assignee, bot authored the PR, the head is a
     # work branch, same-repo (fork PRs never qualify), and the PR is an open
     # draft. Assignment is operator-gated (write access, or hooks via the
     # operator PAT) — this workflow is compute plane only: no intake or cycle
     # logic lives here (that's gingur/hooks).
+    # An explicit pr input means an already-gated run: the hooks service gates
+    # admission before dispatching, and workflow_dispatch requires write access
+    # — the same trust bar as assignment. The Resolve step still re-derives all
+    # five guards from API truth before checkout, because they protect secrets.
     if: >-
-      github.event.assignee.login == (inputs.bot || 'gingur-bot') &&
+      inputs.pr != '' ||
+      (github.event.assignee.login == (inputs.bot || 'gingur-bot') &&
       github.event.pull_request.user.login == (inputs.bot || 'gingur-bot') &&
       startsWith(github.event.pull_request.head.ref, 'claude/task-') &&
       github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name &&
       github.event.pull_request.state == 'open' &&
-      github.event.pull_request.draft
+      github.event.pull_request.draft)
     # vars.RUNNER fallback: the direct pull_request:assigned trigger has no
     # caller to pass inputs; in workflow_call mode vars resolves against the
     # calling repo.
     runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
+    env:
+      # Input-first resolution, computed once: dispatch/caller-supplied values
+      # win; the assignment-trigger event fields are the fallback.
+      PR: ${{ inputs.pr || github.event.pull_request.number }}
+      # Hooks assigns via a PAT, so sender can be the bot itself — fall
+      # back to the repo owner as the operator.
+      OPERATOR: ${{ inputs.operator || (github.event.sender.login != (inputs.bot || 'gingur-bot') && github.event.sender.login || github.repository_owner) }}
     steps:
+      # Dispatch mode has no pull_request payload, so the head ref/SHA must be
+      # resolved via API — and the five event-mode `if:` guards are re-derived
+      # from that same API truth, hard-failing before checkout and before any
+      # secret use beyond github.token. They are re-checked server-side because
+      # they protect secrets from checking out untrusted fork code — dispatch
+      # inputs are not trusted for this. This is secrets-safety, not admission
+      # logic (which stays in gingur/hooks).
+      - name: Resolve
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_PR: ${{ inputs.pr }}
+          REPO: ${{ github.repository }}
+          BOT: ${{ inputs.bot || 'gingur-bot' }}
+          EVENT_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          if [[ -z "$INPUT_PR" ]]; then
+            # Event mode: the payload already passed the job `if:` guards.
+            {
+              echo "headRef=$EVENT_HEAD_REF"
+              echo "headSha=$EVENT_HEAD_SHA"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          pr=$(gh pr view "$INPUT_PR" --repo "$REPO" \
+            --json headRefName,headRefOid,isDraft,state,isCrossRepository,author)
+          state=$(jq -r '.state' <<< "$pr")
+          draft=$(jq -r '.isDraft' <<< "$pr")
+          cross=$(jq -r '.isCrossRepository' <<< "$pr")
+          author=$(jq -r '.author.login' <<< "$pr")
+          headRef=$(jq -r '.headRefName' <<< "$pr")
+          fail=0
+          [[ "$state" == 'OPEN' ]] || { echo "::error::PR #$INPUT_PR state is '$state', need OPEN"; fail=1; }
+          [[ "$draft" == 'true' ]] || { echo "::error::PR #$INPUT_PR isDraft is '$draft', need true"; fail=1; }
+          [[ "$cross" == 'false' ]] || { echo "::error::PR #$INPUT_PR isCrossRepository is '$cross', need false"; fail=1; }
+          [[ "$author" == "$BOT" ]] || { echo "::error::PR #$INPUT_PR author is '$author', need '$BOT'"; fail=1; }
+          [[ "$headRef" == claude/task-* ]] || { echo "::error::PR #$INPUT_PR headRefName is '$headRef', need claude/task-*"; fail=1; }
+          [[ "$fail" -eq 0 ]] || exit 1
+          {
+            echo "headRef=$headRef"
+            echo "headSha=$(jq -r '.headRefOid' <<< "$pr")"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v6
         with:
           # Review the PR head itself, not the merge ref checkout defaults to
           # on pull_request events — findings must match the reviewed SHA.
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ steps.resolve.outputs.headSha }}
 
       - name: Secrets
         uses: gingur/devkit/actions/infisical.secrets.fetch@main
@@ -101,17 +193,19 @@ jobs:
           bot: ${{ inputs.bot || 'gingur-bot' }}
           turns: ${{ inputs.turns || '50' }}
           model: ${{ inputs.model || 'fable' }}
+          pr: ${{ env.PR }}
+          headRef: ${{ steps.resolve.outputs.headRef }}
+          headSha: ${{ steps.resolve.outputs.headSha }}
+          operator: ${{ env.OPERATOR }}
 
       - name: Handoff
         if: always()
         uses: gingur/devkit/actions/claude.handoff@main
         with:
           # PRs are issues to the assignee/comment APIs — hand off on the PR.
-          issue: ${{ github.event.pull_request.number }}
+          issue: ${{ env.PR }}
           bot: ${{ inputs.bot || 'gingur-bot' }}
-          # Hooks assigns via a PAT, so sender can be the bot itself — fall
-          # back to the repo owner as the operator.
-          operator: ${{ github.event.sender.login != (inputs.bot || 'gingur-bot') && github.event.sender.login || github.repository_owner }}
+          operator: ${{ env.OPERATOR }}
           status: ${{ job.status }}
           turn: Review
           # No panel: action panels live on ask/task issues only.

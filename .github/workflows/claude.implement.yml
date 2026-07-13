@@ -1,4 +1,7 @@
 name: Implement
+# run-name embeds the issue number so the hooks service can correlate the
+# completed run (workflow_run.display_title) back to its issue for turn-end.
+run-name: 'Implement #${{ github.event.issue.number }}'
 
 on:
   issues:
@@ -57,7 +60,7 @@ concurrency:
 
 jobs:
   implement:
-    name: "Implement ${{ github.event.repository.name }}#${{ github.event.issue.number }}: ${{ github.event.issue.title }}"
+    name: 'Implement ${{ github.event.repository.name }}#${{ github.event.issue.number }}: ${{ github.event.issue.title }}'
     if: github.event.assignee.login == (inputs.bot || 'gingur-bot') && contains(github.event.issue.labels.*.name, 'claude-task')
     # vars.RUNNER fallback: the direct issues:assigned trigger has no caller to
     # pass inputs; in workflow_call mode vars resolves against the calling repo.

@@ -1,4 +1,7 @@
 name: Review
+# run-name embeds the PR number so the hooks service can correlate the
+# completed run (workflow_run.display_title) back to its PR for review-fire/turn-end.
+run-name: 'Review #${{ github.event.pull_request.number }}'
 
 on:
   pull_request:
@@ -58,7 +61,7 @@ concurrency:
 
 jobs:
   review:
-    name: "Review ${{ github.event.repository.name }}#${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}"
+    name: 'Review ${{ github.event.repository.name }}#${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}'
     # All five guards: bot is the assignee, bot authored the PR, the head is a
     # work branch, same-repo (fork PRs never qualify), and the PR is an open
     # draft. Assignment is operator-gated (write access, or hooks via the

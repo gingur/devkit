@@ -160,7 +160,7 @@ Infisical is the single source of truth for deploy credentials. Rotate in **one 
 
 When rotating a Cloudflare API token (annual, or on compromise / personnel change):
 
-1. **Generate the new token** — Cloudflare dashboard → My Profile → API Tokens → Create. Minimum scope: Workers Scripts (Edit), Account Settings (Read), per-zone Workers Routes (Edit), per-zone DNS (Edit) (DNS edit is needed for custom-domain previews).
+1. **Generate the new token** — Cloudflare dashboard → My Profile → API Tokens → Create. Minimum scope: Workers Scripts (Edit), Workers KV Storage (Edit), Account Settings (Read), per-zone Workers Routes (Edit), per-zone DNS (Edit) (DNS edit is needed for custom-domain previews; KV Storage is probed by `wrangler delete` during preview cleanup).
 2. **Update the value in Infisical** — project → env → folder → click the secret → edit value → save. The audit log captures the change.
 3. **Verify** — trigger any consuming workflow (or wait for the next scheduled run). The next OIDC fetch returns the new value automatically; no consumer-side config change.
 4. **Revoke the old token** in Cloudflare once propagation is confirmed (24h grace recommended in case a background job cached the old value — our workflows don't cache, but the margin is cheap).

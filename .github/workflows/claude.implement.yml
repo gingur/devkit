@@ -37,7 +37,7 @@ on:
         description: 'Infisical environment slug'
         type: string
         required: false
-        default: 'public'
+        default: 'preview'
       infisicalPath:
         description: 'Infisical secret folder path'
         type: string
@@ -75,7 +75,7 @@ jobs:
         with:
           identity: ${{ inputs.infisicalIdentity || vars.INFISICAL_IDENTITY }}
           project: ${{ inputs.infisicalProject || 'gingur' }}
-          env: ${{ inputs.infisicalEnv || 'public' }}
+          env: ${{ inputs.infisicalEnv || 'preview' }}
           path: ${{ inputs.infisicalPath || '/infra/github' }}
 
       - name: Implement

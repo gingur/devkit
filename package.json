@@ -4,12 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare": "husky"
+    "prepare": "husky",
+    "lint": "oxlint",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check"
   },
   "exports": {
     "./tsconfig": "./configs/tsconfig.base.json",
-    "./eslint": "./configs/eslint.config.mjs",
-    "./prettier": "./configs/prettier.config.mjs",
+    "./oxlint": "./configs/oxlintrc.base.json",
+    "./oxfmt": "./configs/oxfmt.config.mjs",
     "./lint-staged": "./configs/lint-staged.config.js",
     "./infisical-scan": "./configs/infisical-scan.toml"
   },
@@ -19,19 +22,15 @@
     ".github"
   ],
   "peerDependencies": {
-    "@eslint/js": "^9",
-    "eslint": "^9",
-    "prettier": "^3",
-    "typescript": "^5",
-    "typescript-eslint": "^8"
+    "oxfmt": "^0.58",
+    "oxlint": "^1",
+    "typescript": "^6 || ^7"
   },
   "devDependencies": {
-    "@eslint/js": "^9",
-    "eslint": "^9",
     "husky": "^9",
     "lint-staged": "^16",
-    "prettier": "^3",
-    "typescript": "^5",
-    "typescript-eslint": "^8"
+    "oxfmt": "0.58.0",
+    "oxlint": "^1.73",
+    "typescript": "^7"
   }
 }

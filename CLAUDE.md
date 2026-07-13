@@ -127,9 +127,11 @@ so it's bumped once.
 - Cloudflare credentials live **only in Infisical** and are fetched at run time via
   GitHub OIDC (`infisical.secrets.fetch`). No per-repo GitHub secrets; rotation is
   one place (see [README → Secret rotation](./README.md#secret-rotation)).
-- The CF API token's minimum scope: **Workers Scripts (Edit)**, **Account Settings
-  (Read)**, per-zone **Workers Routes (Edit)**, per-zone **DNS (Edit)** (the last is
-  required for custom-domain previews).
+- The CF API token's minimum scope: **Workers Scripts (Edit)**, **Workers KV
+  Storage (Edit)**, **Account Settings (Read)**, per-zone **Workers Routes (Edit)**,
+  per-zone **DNS (Edit)**. DNS edit is required for custom-domain previews; KV
+  Storage is required by `wrangler delete` (preview cleanup probes the script's
+  KV namespaces during teardown — verified live, gingur/troyrhinehart PR#25).
 - `id-token: write` permission is required in any job that fetches secrets.
 
 ---

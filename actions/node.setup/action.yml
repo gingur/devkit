@@ -34,3 +34,11 @@ runs:
       if: ${{ inputs.install == 'true' }}
       shell: bash
       run: pnpm install --frozen-lockfile
+
+    # Re-resolve the shared-config dep past the lockfile pin so CI always runs
+    # against what the specifier names: `#main` → branch head (live), a SHA →
+    # held back, `#semver:` tag → range-bounded. No-op when the dep is absent.
+    - name: Refresh devkit
+      if: ${{ inputs.install == 'true' }}
+      shell: bash
+      run: pnpm update @gingur/devkit

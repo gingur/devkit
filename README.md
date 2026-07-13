@@ -81,11 +81,38 @@ pnpm add -D oxlint oxfmt typescript
 > compiler API** (e.g. `@astrojs/check` peers `^5 || ^6`) — pin TS6 there until
 > it catches up.
 
+### Shared configs are live in CI
+
+CI does not run against the committed lockfile's devkit pin: `actions/node.setup`
+(the setup path of `node.verify.yml` **and** `cf.worker.deploy.yml`) runs
+`pnpm update @gingur/devkit` after its frozen install, re-resolving the
+dependency to whatever its **specifier** names on every run. The specifier is
+the policy knob:
+
+| Specifier                             | Every CI run resolves to                        |
+| ------------------------------------- | ----------------------------------------------- |
+| `github:gingur/devkit#main`           | `main` head — **live** (the fleet default)      |
+| `github:gingur/devkit#<sha>`          | that SHA — hold-back during a migration         |
+| `github:gingur/devkit#semver:<range>` | range-bounded, once version tags exist (future) |
+
+The committed lockfile and local dev catch up on demand — run
+`pnpm update @gingur/devkit` and commit; until then local can lag CI, and **CI
+is authoritative**. Repos without an `@gingur/devkit` dependency are untouched
+(the refresh is a verified no-op).
+
+> **Fleet working rule:** a shared-config change lands **backward-compatible,
+> or is rolled out fleet-wide the same day** — live import puts every
+> consumer's next verify _and production deploy_ in the blast radius.
+> "Backward-compatible" includes **tool-version floors** (the
+> `peerDependencies` above): a config option requiring a newer oxlint / oxfmt /
+> TypeScript breaks consumers whose binaries lag devkit's floor (e.g.
+> vp-bundled oxlint/oxfmt), even when the change is otherwise additive.
+
 ## Conventions
 
 ### Versioning
 
-Pin to `@main`. This is the gingur consumer convention — single maintainer, single direction of change, so there's no benefit to maintaining version tags. Reproducibility lives on the consumer side via lockfile-pinned SHAs (e.g. `pnpm-lock.yaml` records the resolved commit when devkit is consumed as a git URL dep).
+Pin to `@main`. This is the gingur consumer convention — single maintainer, single direction of change, so there's no benefit to maintaining version tags. Reproducibility lives on the consumer side via lockfile-pinned SHAs (e.g. `pnpm-lock.yaml` records the resolved commit when devkit is consumed as a git URL dep) — except the `@gingur/devkit` package dep itself in CI, which `node.setup` re-resolves to its specifier every run (see [Shared configs are live in CI](#shared-configs-are-live-in-ci)).
 
 Need a frozen reference point (paused upgrade, post-mortem snapshot)? Pin to a specific SHA: `gingur/devkit/...@<sha>`.
 

@@ -151,6 +151,22 @@ What a consumer repo (e.g. a site deployed via devkit) must follow.
 
 Pin to `@main` (the gingur consumer convention).
 
+### Shared configs are live
+
+Consumers import devkit tool configs (the `exports` map over `configs/`) via
+`"@gingur/devkit": "github:gingur/devkit#main"`. CI is live regardless of the
+committed lockfile: `actions/node.setup` runs `pnpm update @gingur/devkit`
+after its frozen install, so `node.verify.yml` and `cf.worker.deploy.yml`
+resolve the dependency **specifier** fresh every run — `#main` → branch head
+(live, the fleet default); a SHA specifier → hold-back during a migration; a
+future `#semver:` tag → range-bounded. No-op when the dep is absent. Local dev
+catches up via `pnpm update @gingur/devkit`; **CI is authoritative**.
+
+**Working rule:** shared-config changes land backward-compatible, or roll out
+fleet-wide the same day. "Backward-compatible" includes tool-version floors
+(peerDependencies) — consumer binaries (e.g. vp-bundled oxlint/oxfmt) may lag
+devkit's floor.
+
 ### Required permissions
 
 - Deploy / preview / cleanup jobs need `contents: read` + `id-token: write` (OIDC).

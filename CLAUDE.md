@@ -180,7 +180,10 @@ devkit's floor.
 - **Only operator-gated triggers may target the `local` self-hosted runner:**
   `issues: assigned` (claude.plan, claude.implement), `pull_request: assigned`
   (claude.review — hard-gated to bot-authored, same-repo draft PRs), `push` to
-  main (deploy), `workflow_dispatch` (rollback). PR-triggered workflows (verify, preview,
+  main (deploy), `workflow_dispatch` (rollback, and the dispatch-mode agent
+  callers — claude.plan / claude.implement / claude.review — dispatching
+  requires write access: the operator directly, or the hooks service via the
+  operator PAT — the same trust bar as assignment). PR-triggered workflows (verify, preview,
   preview cleanup, secret scan) always run GitHub-hosted;
   `cf.worker.preview*.yml` deliberately expose no `runner` input.
 - **Wiring:** set the repo variable `RUNNER=local` and pass

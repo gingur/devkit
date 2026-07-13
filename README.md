@@ -402,7 +402,7 @@ jobs:
       domain: <your-domain>
       cfZone: <zone-id>
       infisicalProject: <project-slug>
-      infisicalEnv: <env-slug> # where the CF token lives (often "production")
+      infisicalEnv: <env-slug> # where the CF token lives (often "public")
       infisicalPath: /<app>
       infisicalIdentity: <preview-identity-uuid> # see note below — NOT the production identity
     secrets: inherit
@@ -496,7 +496,7 @@ jobs:
       env: ${{ inputs.env }}
       version: ${{ inputs.version }}
       infisicalProject: <your-project-slug>
-      infisicalEnv: production
+      infisicalEnv: public
       infisicalPath: <your-secret-path>
       infisicalIdentity: <your-identity-uuid>
     secrets: inherit
@@ -549,7 +549,7 @@ Invite the machine user with **write** and accept the invitation as the bot
 
 ```bash
 gh api -X PUT repos/gingur/<repo>/collaborators/gingur-bot -f permission=push
-infisical run --projectId 8baa69d9-e071-4999-9300-4e0f938c0ff5 --env prod --path /infra/github --silent -- bash -c '
+infisical run --projectId 8baa69d9-e071-4999-9300-4e0f938c0ff5 --env preview --path /infra/github --silent -- bash -c '
   inv=$(GH_TOKEN="$GH_BOT_PAT" gh api /user/repository_invitations --jq ".[] | select(.repository.full_name==\"gingur/<repo>\") | .id")
   [[ -n "$inv" ]] && GH_TOKEN="$GH_BOT_PAT" gh api -X PATCH "/user/repository_invitations/$inv" >/dev/null && echo accepted'
 ```
@@ -564,7 +564,7 @@ gh label create claude-task --repo gingur/<repo> --description "agent-implementa
 ### 3. Infisical machine identity (one per repo)
 
 Each repo gets its own identity, OIDC-bound to that repo's Actions runs and
-readable **only** on `prod` `/infra/github` (least privilege — a compromised
+readable **only** on `preview` `/infra/github` (least privilege — a compromised
 repo can't read another folder). Ambient `infisical login` session; the token
 goes through a header file, never a printed env:
 
@@ -578,9 +578,9 @@ curl -s -X POST -H @/tmp/ih -H 'Content-Type: application/json' "https://app.inf
   -d '{"oidcDiscoveryUrl":"https://token.actions.githubusercontent.com","boundIssuer":"https://token.actions.githubusercontent.com","boundAudiences":"https://github.com/gingur","boundClaims":{},"boundSubject":"repo:gingur/<repo>:ref:refs/heads/main","accessTokenTTL":2592000,"accessTokenMaxTTL":2592000,"accessTokenNumUsesLimit":0,"accessTokenTrustedIps":[{"ipAddress":"0.0.0.0/0"},{"ipAddress":"::/0"}]}'
 # 3c. membership in the gingur project (id 8baa69d9-e071-4999-9300-4e0f938c0ff5), no-access base role
 curl -s -X POST -H @/tmp/ih -H 'Content-Type: application/json' "https://app.infisical.com/api/v2/workspace/8baa69d9-e071-4999-9300-4e0f938c0ff5/identity-memberships/$ID" -d '{"role":"no-access"}'
-# 3d. path-scoped read privilege: prod + /infra/github only
+# 3d. path-scoped read privilege: preview + /infra/github only
 curl -s -X POST -H @/tmp/ih -H 'Content-Type: application/json' https://app.infisical.com/api/v2/identity-project-additional-privilege \
-  -d "{\"identityId\":\"$ID\",\"projectId\":\"8baa69d9-e071-4999-9300-4e0f938c0ff5\",\"slug\":\"read-infra-github\",\"permissions\":[{\"action\":[\"describeSecret\",\"readValue\"],\"subject\":\"secrets\",\"conditions\":{\"environment\":{\"\$eq\":\"prod\"},\"secretPath\":{\"\$glob\":\"/infra/github\"}}}],\"type\":{\"isTemporary\":false}}"
+  -d "{\"identityId\":\"$ID\",\"projectId\":\"8baa69d9-e071-4999-9300-4e0f938c0ff5\",\"slug\":\"read-infra-github\",\"permissions\":[{\"action\":[\"describeSecret\",\"readValue\"],\"subject\":\"secrets\",\"conditions\":{\"environment\":{\"\$eq\":\"preview\"},\"secretPath\":{\"\$glob\":\"/infra/github\"}}}],\"type\":{\"isTemporary\":false}}"
 rm /tmp/ih
 gh variable set INFISICAL_IDENTITY --repo gingur/<repo> --body "$ID"
 ```
@@ -660,7 +660,7 @@ the run link instead. Full design rationale:
   interactive Claude Code use; `turns` bounds the worst case per run.
 - **Auth:** no GitHub secrets. `infisical.secrets.fetch` (OIDC) pulls
   `CLAUDE_CODE_OAUTH_TOKEN` and `GH_BOT_PAT` from Infisical project `gingur`,
-  env `prod`, path `/infra/github`. The bot PAT authors all agent-created
+  env `preview`, path `/infra/github`. The bot PAT authors all agent-created
   issues/comments so they can trigger downstream workflows (the default
   `GITHUB_TOKEN` is suppressed from triggering; a PAT is not).
 
@@ -702,7 +702,7 @@ identity from the `INFISICAL_IDENTITY` Actions variable.
 | `model`             | `fable`         | `claude --model` value (planning defaults to the top tier) |
 | `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)    |
 | `infisicalProject`  | `gingur`        | Infisical project slug                                     |
-| `infisicalEnv`      | `prod`          | Infisical environment slug                                 |
+| `infisicalEnv`      | `preview`       | Infisical environment slug                                 |
 | `infisicalPath`     | `/infra/github` | folder holding the two secrets                             |
 | `runner`            | `ubuntu-latest` | runner label                                               |
 
@@ -796,7 +796,7 @@ variable.
 | `model`             | `fable`         | `claude --model` value (implementation defaults to the top tier) |
 | `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)          |
 | `infisicalProject`  | `gingur`        | Infisical project slug                                           |
-| `infisicalEnv`      | `prod`          | Infisical environment slug                                       |
+| `infisicalEnv`      | `preview`       | Infisical environment slug                                       |
 | `infisicalPath`     | `/infra/github` | folder holding the two secrets                                   |
 | `runner`            | `ubuntu-latest` | runner label                                                     |
 
@@ -880,7 +880,7 @@ workflow may take a `runner` input while the preview workflows may not (see
 | `model`             | `fable`         | `claude --model` value (review defaults to the top tier) |
 | `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)  |
 | `infisicalProject`  | `gingur`        | Infisical project slug                                   |
-| `infisicalEnv`      | `prod`          | Infisical environment slug                               |
+| `infisicalEnv`      | `preview`       | Infisical environment slug                               |
 | `infisicalPath`     | `/infra/github` | folder holding the two secrets                           |
 | `runner`            | `ubuntu-latest` | runner label                                             |
 
@@ -965,6 +965,6 @@ self-triggers (no caller needed) and reads the identity from the
 | `quiet`             | `20`            | debounce quiet period in seconds; each new event restarts it  |
 | `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)       |
 | `infisicalProject`  | `gingur`        | Infisical project slug                                        |
-| `infisicalEnv`      | `prod`          | Infisical environment slug                                    |
+| `infisicalEnv`      | `preview`       | Infisical environment slug                                    |
 | `infisicalPath`     | `/infra/github` | folder holding the two secrets                                |
 | `runner`            | `ubuntu-latest` | runner label                                                  |

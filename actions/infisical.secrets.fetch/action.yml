@@ -10,13 +10,13 @@ inputs:
     required: false
     default: 'https://github.com/gingur'
   project:
-    description: 'Infisical project slug (e.g., gingur-7xjq)'
+    description: 'Infisical project slug (e.g., gingur)'
     required: true
   env:
-    description: 'Infisical environment slug (e.g., production)'
+    description: 'Infisical environment slug (e.g., public)'
     required: true
   path:
-    description: 'Infisical secret folder path (e.g., /troyrhinehart)'
+    description: 'Infisical secret folder path (e.g., /troyrhinehart/cloudflare)'
     required: true
 
 runs:

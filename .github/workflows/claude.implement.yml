@@ -51,10 +51,10 @@ on:
         required: false
         default: '100'
       model:
-        description: 'Model (claude --model value). Implementation defaults to the strongest tier; empty falls back to the account default.'
+        description: 'Model (claude --model value). Implementation defaults to Sonnet; empty falls back to the account default.'
         type: string
         required: false
-        default: 'fable'
+        default: 'sonnet'
       infisicalIdentity:
         description: 'Infisical machine identity UUID with OIDC trust for this repo'
         type: string
@@ -124,7 +124,7 @@ jobs:
         with:
           bot: ${{ inputs.bot || 'gingur-bot' }}
           turns: ${{ inputs.turns || '100' }}
-          model: ${{ inputs.model || 'fable' }}
+          model: ${{ inputs.model || 'sonnet' }}
           issue: ${{ env.ISSUE }}
           operator: ${{ env.OPERATOR }}
 

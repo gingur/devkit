@@ -13,7 +13,7 @@ inputs:
   model:
     description: 'Model (claude --model value). Review defaults to the strongest tier; empty falls back to the account default.'
     required: false
-    default: 'fable'
+    default: 'sonnet'
   pr:
     description: 'Pull request number the turn reviews'
     required: true

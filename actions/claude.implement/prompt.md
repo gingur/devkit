@@ -91,7 +91,7 @@ turn's last action suppresses that default.
 
   One option per line; prefer single-choice menus. A genuinely multi-select
   menu must say "tick all that apply, then Submit" and end with
-  `- [ ] **Submit** — tick last to send your selection` (the wake trigger
+  `- [ ] **Submit** — tick last to send your selection` (the hooks service
   arms a multi-select panel only once its **Submit** box is ticked).
 
 - **Defusal.** After consuming any tick (reading an answer), edit that panel

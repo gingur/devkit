@@ -1,0 +1,42 @@
+# Thin dispatch executor — devkit is a consumer of its own reusables. The
+# hooks service dispatches turns by filename (plan.yml / implement.yml /
+# review.yml), so this caller must exist here like in every enrolled repo.
+name: Plan
+# run-name carries the issue number plus the [d:<uuid>] dispatch token the
+# hooks service correlates completed runs by (workflow_run.display_title →
+# dispatch ledger). Manual escape hatch: gh workflow run plan.yml -f issue=<n>
+# — omitting dispatch yields the legacy '#N' run-name, which the service's
+# fallback correlation still handles.
+run-name: "Plan #${{ inputs.issue }}${{ inputs.dispatch && format(' [d:{0}]', inputs.dispatch) || '' }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: 'Ask issue number the turn acts on'
+        type: string
+        required: true
+      dispatch:
+        description: 'Hooks-service dispatch id, surfaced in run-name for run correlation'
+        type: string
+        required: false
+        default: ''
+      operator:
+        description: 'Human login for handoff; empty falls back to the event sender'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+
+jobs:
+  plan:
+    uses: ./.github/workflows/claude.plan.yml
+    with:
+      issue: ${{ inputs.issue }}
+      dispatch: ${{ inputs.dispatch }}
+      operator: ${{ inputs.operator }}
+      runner: ${{ vars.RUNNER }}

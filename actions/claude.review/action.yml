@@ -16,16 +16,13 @@ inputs:
     default: 'fable'
   pr:
     description: 'Pull request number the turn reviews'
-    required: false
-    default: ${{ github.event.pull_request.number }}
+    required: true
   headRef:
     description: 'PR head branch name (the claude/task-<n> work branch the task number derives from)'
-    required: false
-    default: ${{ github.event.pull_request.head.ref }}
+    required: true
   headSha:
     description: 'PR head commit SHA (the one checked out in the workspace)'
-    required: false
-    default: ${{ github.event.pull_request.head.sha }}
+    required: true
   operator:
     description: 'Human login this turn serves; empty falls back to the event sender (repo owner when the sender is the bot)'
     required: false

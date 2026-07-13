@@ -1,5 +1,5 @@
 name: 'Claude implementation turn'
-description: 'One implementation turn on the triggering claude-task issue: reconcile state, implement on the work branch, verify, open or update a draft PR. Requires CLAUDE_CODE_OAUTH_TOKEN and GH_BOT_PAT in env (use infisical.secrets.fetch first). Billed to the Claude Max subscription.'
+description: 'One implementation turn on a claude-task issue: reconcile state, implement on the work branch, verify, open or update a draft PR. Requires CLAUDE_CODE_OAUTH_TOKEN and GH_BOT_PAT in env (use infisical.secrets.fetch first). Billed to the Claude Max subscription.'
 
 inputs:
   bot:
@@ -14,6 +14,14 @@ inputs:
     description: 'Model (claude --model value). Implementation defaults to the strongest tier; empty falls back to the account default.'
     required: false
     default: 'fable'
+  issue:
+    description: 'Task issue number the turn acts on'
+    required: false
+    default: ${{ github.event.issue.number }}
+  operator:
+    description: 'Human login this turn serves; empty falls back to the event sender (repo owner when the sender is the bot)'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -46,11 +54,11 @@ runs:
         prompt: |
           Run context:
           - Repository: ${{ github.repository }}
-          - Task issue: #${{ github.event.issue.number }}
+          - Task issue: #${{ inputs.issue }}
           - Your bot login: ${{ inputs.bot }}
-          - Operator (the human this turn): ${{ github.event.sender.login != inputs.bot && github.event.sender.login || github.repository_owner }}
+          - Operator (the human this turn): ${{ inputs.operator || (github.event.sender.login != inputs.bot && github.event.sender.login || github.repository_owner) }}
           - Turn budget: ${{ inputs.turns }} agent turns (the --max-turns hard cap)
-          - Work branch: claude/task-${{ github.event.issue.number }}
+          - Work branch: claude/task-${{ inputs.issue }}
 
           ${{ env.TASK_MD }}
         claude_args: |
@@ -62,7 +70,7 @@ runs:
     - name: Verify
       env:
         GH_TOKEN: ${{ github.token }}
-        ISSUE: ${{ github.event.issue.number }}
+        ISSUE: ${{ inputs.issue }}
         REPO: ${{ github.repository }}
         BOT: ${{ inputs.bot }}
       shell: bash

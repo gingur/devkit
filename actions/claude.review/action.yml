@@ -1,5 +1,5 @@
 name: 'Claude review turn'
-description: 'One review turn on the triggering bot-authored draft PR: reconcile PR + task state, review the diff against the task acceptance criteria and repo standards, then submit exactly one COMMENT review: blocking findings (PR stays draft) or an LGTM pass (then mark the PR ready and request the operator review). Requires CLAUDE_CODE_OAUTH_TOKEN and GH_BOT_PAT in env (use infisical.secrets.fetch first). Billed to the Claude Max subscription.'
+description: 'One review turn on a bot-authored draft PR: reconcile PR + task state, review the diff against the task acceptance criteria and repo standards, then submit exactly one COMMENT review: blocking findings (PR stays draft) or an LGTM pass (then mark the PR ready and request the operator review). Requires CLAUDE_CODE_OAUTH_TOKEN and GH_BOT_PAT in env (use infisical.secrets.fetch first). Billed to the Claude Max subscription.'
 
 inputs:
   bot:
@@ -14,6 +14,22 @@ inputs:
     description: 'Model (claude --model value). Review defaults to the strongest tier; empty falls back to the account default.'
     required: false
     default: 'fable'
+  pr:
+    description: 'Pull request number the turn reviews'
+    required: false
+    default: ${{ github.event.pull_request.number }}
+  headRef:
+    description: 'PR head branch name (the claude/task-<n> work branch the task number derives from)'
+    required: false
+    default: ${{ github.event.pull_request.head.ref }}
+  headSha:
+    description: 'PR head commit SHA (the one checked out in the workspace)'
+    required: false
+    default: ${{ github.event.pull_request.head.sha }}
+  operator:
+    description: 'Human login this turn serves; empty falls back to the event sender (repo owner when the sender is the bot)'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -22,7 +38,7 @@ runs:
       id: instructions
       shell: bash
       env:
-        HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        HEAD_REF: ${{ inputs.headRef }}
       run: |
         # Emits AGENT_MD/TASK_MD/TURN_STARTED/CLAUDE_EXEC — rationale in claude.lib/turn.sh.
         . "${GITHUB_ACTION_PATH}/../claude.lib/turn.sh"
@@ -42,10 +58,10 @@ runs:
         prompt: |
           Run context:
           - Repository: ${{ github.repository }}
-          - Pull request: #${{ github.event.pull_request.number }} (branch ${{ github.event.pull_request.head.ref }}, head SHA ${{ github.event.pull_request.head.sha }} — checked out in the workspace)
+          - Pull request: #${{ inputs.pr }} (branch ${{ inputs.headRef }}, head SHA ${{ inputs.headSha }} — checked out in the workspace)
           - Task issue: #${{ env.TASK }}
           - Your bot login: ${{ inputs.bot }}
-          - Operator (the human this turn): ${{ github.event.sender.login != inputs.bot && github.event.sender.login || github.repository_owner }}
+          - Operator (the human this turn): ${{ inputs.operator || (github.event.sender.login != inputs.bot && github.event.sender.login || github.repository_owner) }}
           - Turn budget: ${{ inputs.turns }} agent turns (the --max-turns hard cap)
 
           ${{ env.TASK_MD }}
@@ -63,7 +79,7 @@ runs:
     - name: Verify
       env:
         GH_TOKEN: ${{ github.token }}
-        PR: ${{ github.event.pull_request.number }}
+        PR: ${{ inputs.pr }}
         REPO: ${{ github.repository }}
         BOT: ${{ inputs.bot }}
       shell: bash

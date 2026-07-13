@@ -66,7 +66,7 @@ takes extra dots for compound lifecycles (4+: `cf.worker.preview.cleanup`).
 ```
 .github/workflows/   reusable workflows — uses: gingur/devkit/.github/workflows/<name>.yml@main
 actions/             composite actions  — uses: gingur/devkit/actions/<name>@main
-configs/             shared tool configs (eslint, prettier, tsconfig, …)
+configs/             shared tool configs (oxlint, oxfmt, tsconfig, …)
 ```
 
 - **Workflows are thin glue** over single-purpose composite actions. Logic that's

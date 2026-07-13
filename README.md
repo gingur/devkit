@@ -32,32 +32,54 @@ steps:
 
 **Shared configs:**
 
-Add devkit as a dev dependency and re-export the config you need:
+Add devkit as a dev dependency and wire up the config you need:
 
 ```jsonc
 // package.json
 "devDependencies": { "@gingur/devkit": "github:gingur/devkit#main" }
 ```
 
-```js
-// eslint.config.mjs
-export { default } from '@gingur/devkit/eslint';
+```jsonc
+// .oxlintrc.json — oxlint resolves `extends` as file paths (relative to this
+// file), not package specifiers, so point into node_modules:
+{ "extends": ["./node_modules/@gingur/devkit/configs/oxlintrc.base.json"] }
 ```
 
-| Export                       | File                    | Bring your own                                            |
-| ---------------------------- | ----------------------- | --------------------------------------------------------- |
-| `@gingur/devkit/eslint`      | `eslint.config.mjs`     | `eslint`, `@eslint/js`, `typescript-eslint`, `typescript` |
-| `@gingur/devkit/prettier`    | `prettier.config.mjs`   | `prettier`                                                |
-| `@gingur/devkit/lint-staged` | `lint-staged.config.js` | `prettier`, `eslint`                                      |
-| `@gingur/devkit/tsconfig`    | `tsconfig.base.json`    | `typescript`                                              |
+```ts
+// oxfmt.config.ts — the only auto-discovered JS/TS config filename
+// (`.oxfmtrc.json` / `.oxfmtrc.jsonc` are the JSON alternatives;
+// `oxfmt.config.{js,mjs,cjs}` are NOT discovered)
+export { default } from '@gingur/devkit/oxfmt';
+```
+
+```jsonc
+// package.json scripts
+"scripts": { "lint": "oxlint", "fmt": "oxfmt", "fmt:check": "oxfmt --check" }
+```
+
+| Export                       | File                    | Bring your own    |
+| ---------------------------- | ----------------------- | ----------------- |
+| `@gingur/devkit/oxlint`      | `oxlintrc.base.json`    | `oxlint`          |
+| `@gingur/devkit/oxfmt`       | `oxfmt.config.mjs`      | `oxfmt`           |
+| `@gingur/devkit/lint-staged` | `lint-staged.config.js` | `oxfmt`, `oxlint` |
+| `@gingur/devkit/tsconfig`    | `tsconfig.base.json`    | `typescript`      |
 
 These tools are **not** bundled — the configs reference them but consumers install
 them. They are declared as `peerDependencies` (so your package manager warns when
 one is missing); install the ones for the exports you use:
 
 ```bash
-pnpm add -D eslint @eslint/js typescript-eslint typescript prettier
+pnpm add -D oxlint oxfmt typescript
 ```
+
+> **Migration (ESLint/Prettier → oxlint/oxfmt).** Consumers track devkit via
+> `#main`, so they move in **lockstep**: on your next devkit bump, drop
+> `eslint` / `@eslint/js` / `typescript-eslint` / `prettier`, install the three
+> peers above, and replace `eslint.config.mjs` / `prettier.config.mjs` with the
+> `.oxlintrc.json` + `oxfmt.config.ts` wiring shown here. TypeScript baseline is
+> `^6 || ^7`: use TS7 unless a dependency still needs the TypeScript **JS
+> compiler API** (e.g. `@astrojs/check` peers `^5 || ^6`) — pin TS6 there until
+> it catches up.
 
 ## Conventions
 

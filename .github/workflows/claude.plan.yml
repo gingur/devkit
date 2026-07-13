@@ -1,13 +1,48 @@
 name: Plan
-# run-name embeds the issue number so the hooks service can correlate the
-# completed run (workflow_run.display_title) back to its issue for turn-end.
-run-name: 'Plan #${{ github.event.issue.number }}'
+# run-name carries both correlation tokens for the hooks service
+# (workflow_run.display_title): `[d:<uuid>]` is the primary token — the
+# dispatch-ledger key for service-dispatched runs — and `#N` stays as the
+# human display plus the hooks legacy fallback for assignment-triggered runs.
+# This run-name covers only devkit's own direct/dispatch runs — consumer
+# callers set their own.
+run-name: "Plan #${{ inputs.issue || github.event.issue.number }}${{ inputs.dispatch && format(' [d:{0}]', inputs.dispatch) || '' }}"
 
 on:
   issues:
     types: [assigned]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: 'Ask issue number the turn acts on'
+        type: string
+        required: true
+      dispatch:
+        description: 'Hooks-service dispatch id, surfaced in run-name for run correlation'
+        type: string
+        required: false
+        default: ''
+      operator:
+        description: 'Human login for handoff; empty falls back to the event sender'
+        type: string
+        required: false
+        default: ''
   workflow_call:
     inputs:
+      issue:
+        description: 'Ask issue number the turn acts on (empty falls back to the triggering issue event)'
+        type: string
+        required: false
+        default: ''
+      dispatch:
+        description: 'Hooks-service dispatch id, surfaced in run-name for run correlation'
+        type: string
+        required: false
+        default: ''
+      operator:
+        description: 'Human login for handoff; empty falls back to the event sender'
+        type: string
+        required: false
+        default: ''
       bot:
         description: 'Machine-user login that triggers a turn when assigned'
         type: string
@@ -55,17 +90,28 @@ permissions:
   id-token: write
 
 concurrency:
-  group: plan-${{ github.event.issue.number }}
+  group: plan-${{ inputs.issue || github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
   plan:
-    name: 'Plan ${{ github.event.repository.name }}#${{ github.event.issue.number }}: ${{ github.event.issue.title }}'
-    if: github.event.assignee.login == (inputs.bot || 'gingur-bot') && !contains(github.event.issue.labels.*.name, 'claude-task')
+    name: "Plan ${{ github.event.repository.name }}#${{ inputs.issue || github.event.issue.number }}${{ github.event.issue.title && format(': {0}', github.event.issue.title) || '' }}"
+    # An explicit issue input means an already-gated run: the hooks service
+    # gates admission before dispatching, and workflow_dispatch requires write
+    # access — the same trust bar as assignment. Otherwise the assignment gate
+    # applies unchanged.
+    if: inputs.issue != '' || (github.event.assignee.login == (inputs.bot || 'gingur-bot') && !contains(github.event.issue.labels.*.name, 'claude-task'))
     # vars.RUNNER fallback: the direct issues:assigned trigger has no caller to
     # pass inputs; in workflow_call mode vars resolves against the calling repo.
     runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
+    env:
+      # Input-first resolution, computed once: dispatch/caller-supplied values
+      # win; the assignment-trigger event fields are the fallback.
+      ISSUE: ${{ inputs.issue || github.event.issue.number }}
+      # Wake assigns via the bot PAT, so sender can be the bot itself —
+      # fall back to the repo owner as the operator.
+      OPERATOR: ${{ inputs.operator || (github.event.sender.login != (inputs.bot || 'gingur-bot') && github.event.sender.login || github.repository_owner) }}
     steps:
       # Label the issue claude-ask so claude.wake.yml treats operator replies
       # as turn triggers from the first assignment onward (task issues need no
@@ -73,7 +119,6 @@ jobs:
       - name: Enroll
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ github.event.issue.number }}
           REPO: ${{ github.repository }}
         shell: bash
         run: |
@@ -99,15 +144,16 @@ jobs:
           bot: ${{ inputs.bot || 'gingur-bot' }}
           turns: ${{ inputs.turns || '50' }}
           model: ${{ inputs.model || 'fable' }}
+          issue: ${{ env.ISSUE }}
+          operator: ${{ env.OPERATOR }}
 
       - name: Handoff
         if: always()
         uses: gingur/devkit/actions/claude.handoff@main
         with:
           bot: ${{ inputs.bot || 'gingur-bot' }}
-          # Wake assigns via the bot PAT, so sender can be the bot itself —
-          # fall back to the repo owner as the operator.
-          operator: ${{ github.event.sender.login != (inputs.bot || 'gingur-bot') && github.event.sender.login || github.repository_owner }}
+          operator: ${{ env.OPERATOR }}
+          issue: ${{ env.ISSUE }}
           status: ${{ job.status }}
           turn: Planning
           panel: |

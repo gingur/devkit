@@ -213,18 +213,17 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 
 ## Reusable workflows reference
 
-| Goal                                                           | Call                                                                 |
-| -------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Verify (lint + typecheck + test) on PR                         | `gingur/devkit/.github/workflows/node.verify.yml@main`               |
-| Deploy to production on push                                   | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main`          |
-| Per-PR preview deploy                                          | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main`         |
-| Tear down preview on PR close                                  | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
-| Roll back production to a prior version (manual)               | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main`        |
-| Scan a PR's commits for leaked secrets                         | `gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main`    |
-| Planning agent turn (issue assigned or dispatched)             | `gingur/devkit/.github/workflows/claude.plan.yml@main`               |
-| Implementation agent turn (claude-task assigned or dispatched) | `gingur/devkit/.github/workflows/claude.implement.yml@main`          |
-| Review agent turn (bot draft-PR assigned or dispatched)        | `gingur/devkit/.github/workflows/claude.review.yml@main`             |
-| Start agent turns from trusted comments / ticks                | `gingur/devkit/.github/workflows/claude.wake.yml@main`               |
+| Goal                                             | Call                                                                 |
+| ------------------------------------------------ | -------------------------------------------------------------------- |
+| Verify (lint + typecheck + test) on PR           | `gingur/devkit/.github/workflows/node.verify.yml@main`               |
+| Deploy to production on push                     | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main`          |
+| Per-PR preview deploy                            | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main`         |
+| Tear down preview on PR close                    | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
+| Roll back production to a prior version (manual) | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main`        |
+| Scan a PR's commits for leaked secrets           | `gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main`    |
+| Planning agent turn (service-dispatched)         | `gingur/devkit/.github/workflows/claude.plan.yml@main`               |
+| Implementation agent turn (service-dispatched)   | `gingur/devkit/.github/workflows/claude.implement.yml@main`          |
+| Review agent turn (service-dispatched)           | `gingur/devkit/.github/workflows/claude.review.yml@main`             |
 
 > Deploy, rollback, verify, secret-scan, and the `claude.*` workflows accept an
 > optional `runner` input (a runner label, default `ubuntu-latest`). See
@@ -244,7 +243,6 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 | `claude.plan`               | `read`     | `write`    | — (requires `issues: write` instead)                                             |
 | `claude.implement`          | `read`     | `write`    | — (requires `issues: write`; pushes/PRs use the bot PAT, not the workflow token) |
 | `claude.review`             | `read`     | `write`    | `write` (verdicts use the bot PAT; requires `issues: write` too)                 |
-| `claude.wake`               | `read`     | `write`    | — (assigns via the bot PAT, not the workflow token)                              |
 
 ## Self-hosted runner (local)
 
@@ -309,32 +307,29 @@ policy below — only operator-gated triggers ever reach it.
 
 Only **operator-gated** triggers may target `local`:
 
-- `issues: assigned` — `claude.plan` / `claude.implement` (only collaborators
-  can assign);
-- `pull_request: [assigned]` — `claude.review` (only write-access users — or
-  hooks via the operator PAT — can assign; the job additionally hard-gates on
-  bot-authored, same-repo draft `claude/task-*` PRs);
 - `push` to main — `cf.worker.deploy`;
-- `workflow_dispatch` — `cf.worker.rollback`, plus the dispatch-mode agent
-  callers (`claude.plan` / `claude.implement` / `claude.review`; see
+- `workflow_dispatch` — `cf.worker.rollback`, plus the agent executors
+  (`plan.yml` / `implement.yml` / `review.yml` calling `claude.plan` /
+  `claude.implement` / `claude.review`; see
   [Dispatch mode](#dispatch-mode-hooks-service-driven)). Dispatching requires
   write access — the operator directly, or the hooks service via the operator
-  PAT — the same trust bar as assignment.
+  PAT — so every agent turn is operator-gated.
 
 Code-driven PR workflows (verify, preview, preview cleanup, secret scan)
 **always stay on GitHub-hosted runners** — a public repo must never run
 PR-driven code on a machine you own. `cf.worker.preview*.yml` deliberately
-have no `runner` input. `claude.review`'s `pull_request: [assigned]` is the
-deliberate exception: it fires on _assignment_ (operator-gated), never on
-pushed code, so it may take a `runner` input.
+have no `runner` input. The agent workflows fire only on dispatch — never on
+pushed code — so they may take a `runner` input; `claude.review` checks out
+PR-head code only after its Resolve step verifies (from API truth) a
+bot-authored, same-repo, open draft `claude/task-*` PR.
 
 ### Consumer wiring
 
 Set the repo variable `RUNNER=local` and pass it through in **every** caller
-workflow — deploy / rollback and the agent callers (plan / implement /
-review / wake) alike. A caller repo's variables don't resolve inside a
+workflow — deploy / rollback and the agent executors (plan / implement /
+review) alike. A caller repo's variables don't resolve inside a
 cross-repo reusable, so the reusables' own `vars.RUNNER` fallback covers only
-devkit's direct triggers — a consumer that omits the input silently runs
+devkit's own direct dispatch runs — a consumer that omits the input silently runs
 GitHub-hosted (bit us: gingur/hooks, 2026-07-10):
 
 ```bash
@@ -546,7 +541,7 @@ wrangler rollback <version-id> --env production --message "manual rollback"
 ## Enrolling a repo in the agent flow
 
 The complete runbook for putting `gingur-bot` to work on a `gingur/<repo>`
-(plan / implement / wake). Everything is idempotent; re-running a step is
+(plan / implement / review). Everything is idempotent; re-running a step is
 safe. Executed for `hooks` (2026-07-09) and `infra` (2026-07-10).
 
 ### 1. Bot access
@@ -594,16 +589,17 @@ gh variable set INFISICAL_IDENTITY --repo gingur/<repo> --body "$ID"
 
 ### 4. Caller workflows
 
-Add the four thin callers from the copy-paste blocks below
-([plan](#claudeplan--issue-driven-planning-agent) /
-[implement](#claudeimplement--issue-driven-implementation-agent) /
-[review](#claudereview--pr-review-agent-turn) /
-[wake](#claudewake--comment-driven-turn-triggers)) to
-`.github/workflows/{plan,implement,review,wake}.yml` on the default branch. Every
-caller **must** pass `runner: ${{ vars.RUNNER }}` — a caller repo's variables
-don't resolve in the reusable's own `runs-on`, so omitting it silently runs
-GitHub-hosted (bit us: gingur/hooks, 2026-07-10). The identity needs no
-input: the reusables read the repo's `INFISICAL_IDENTITY` variable.
+Add the three thin dispatch executors from the copy-paste blocks in
+[Dispatch mode](#dispatch-mode-hooks-service-driven) to
+`.github/workflows/{plan,implement,review}.yml` on the default branch — the
+hooks service dispatches turns by those exact filenames. Turn intake
+(comments, panel ticks, assignments) lives entirely in the hooks service
+([gingur/hooks#64](https://github.com/gingur/hooks/issues/64)); no repo-local
+intake workflow exists. Every caller **must** pass
+`runner: ${{ vars.RUNNER }}` — a caller repo's variables don't resolve in the
+reusable's own `runs-on`, so omitting it silently runs GitHub-hosted (bit us:
+gingur/hooks, 2026-07-10). The identity needs no input: the reusables read
+the repo's `INFISICAL_IDENTITY` variable.
 
 ### 5. Box runner (optional)
 
@@ -619,7 +615,8 @@ Leave `RUNNER` unset to stay GitHub-hosted. Tooling lives in
 ### 6. Verify + breadcrumb
 
 - `gh api repos/gingur/<repo>/actions/runners` → `gingur-box … online` (if opted in)
-- Assign a first issue to `gingur-bot` → a Plan run appears and completes.
+- Assign a first issue to `gingur-bot` (the hooks service turns the
+  assignment into a dispatched Plan run) → the run appears and completes.
 - Add a short **Agent flow** section to the repo's `CLAUDE.md` linking here,
   so any future session (Claude Code, Desktop, web) can find the workflow:
 
@@ -630,16 +627,18 @@ This repo is enrolled in the devkit agent flow: assign an issue to
 `gingur-bot` for a plan; approve via the action panel; task issues are
 implemented to draft PRs. Runbook + operator guide:
 https://github.com/gingur/devkit#enrolling-a-repo-in-the-agent-flow and the
-claude.plan / claude.implement / claude.wake sections below it.
+claude.plan / claude.implement sections below it.
 ```
 
 ## claude.plan — issue-driven planning agent
 
-Assign an issue to the machine user (`gingur-bot`) and a Claude agent takes
+Assign an issue to the machine user (`gingur-bot`) — the hooks service turns
+that gesture into a dispatched run of this workflow — and a Claude agent takes
 one **planning turn**: it studies the ask (repo code, issue thread, the web),
-posts a plan as a comment, and hands the issue back. That first assignment
+posts a plan as a comment, and hands the issue back. The first turn
 auto-enrolls the issue with the `claude-ask` label, and from then on the cycle
-is reply-driven via [claude.wake](#claudewake--comment-driven-turn-triggers):
+is reply-driven via the hooks service
+([gingur/hooks#64](https://github.com/gingur/hooks/issues/64)):
 after each plan the bot posts an **action panel** with an **Approve**
 checkbox. Tick it to accept — the next turn creates the plan's tasks as
 sub-issues labeled `claude-task` — or just reply to discuss (any reply starts
@@ -651,8 +650,9 @@ the run link instead. Full design rationale:
 [design spec](https://gist.github.com/gingur/db3b2def680edfc42e93b9275497b0a9).
 
 - **Turn-taking:** you start a turn by ticking a panel checkbox or replying
-  on the issue. Assigning the bot still works as a fallback _trigger_ — it
-  starts a turn but never approves a plan. The panel checkboxes are tappable
+  on the issue (intake is gated server-side in the hooks service). Assigning
+  the bot still works as a fallback _gesture_ — the service turns it into a
+  dispatch — and it starts a turn but never approves a plan. The panel checkboxes are tappable
   in the GitHub mobile app (validated on Android) and on github.com. The
   agent never assigns anyone; the workflow assigns the issue back to you
   unconditionally (`if: always()`), even when the run fails.
@@ -673,63 +673,40 @@ the run link instead. Full design rationale:
 
 ### Consumer workflow (copy-paste)
 
-```yaml
-# .github/workflows/plan.yml
-name: Plan
-on:
-  issues:
-    types: [assigned]
-
-permissions:
-  contents: read
-  issues: write
-  id-token: write
-
-jobs:
-  plan:
-    uses: gingur/devkit/.github/workflows/claude.plan.yml@main
-    with:
-      runner: ${{ vars.RUNNER }}
-```
-
-The trigger stays `on: issues: [assigned]` — do **not** add `issue_comment`
-here. Comment and checkbox handling lives entirely in the separate
-[claude.wake caller](#claudewake--comment-driven-turn-triggers), which starts
-turns by assigning the bot. This is the **assignment-mode** caller. Repos migrated to the hooks-service
-executor shape ([gingur/hooks#64](https://github.com/gingur/hooks/issues/64))
-use the [dispatch-mode caller](#dispatch-mode-hooks-service-driven) instead.
+The `plan.yml` executor in [Dispatch mode](#dispatch-mode-hooks-service-driven)
+is the caller shape — `workflow_dispatch` only. Do **not** add `issues` or
+`issue_comment` triggers: all intake lives in the hooks service.
 
 Requirements per consumer repo: `gingur-bot` invited as a collaborator with
 write; the Infisical identity's OIDC subject covers the repo; Issues enabled.
-In `devkit` itself the workflow self-triggers (no caller needed) and reads the
-identity from the `INFISICAL_IDENTITY` Actions variable.
+In `devkit` itself the same executor lives at `.github/workflows/plan.yml`,
+calling the local reusable, and reads the identity from the
+`INFISICAL_IDENTITY` Actions variable.
 
-| Input               | Default         | Notes                                                                      |
-| ------------------- | --------------- | -------------------------------------------------------------------------- |
-| `issue`             | —               | ask issue number (dispatch mode; empty falls back to the triggering event) |
-| `dispatch`          | —               | hooks-service dispatch id, surfaced in the run name for correlation        |
-| `operator`          | —               | human login for handoff (empty falls back to the event sender)             |
-| `bot`               | `gingur-bot`    | machine-user login the trigger guards on                                   |
-| `turns`             | `50`            | max agent turns per run (cost bound)                                       |
-| `model`             | `fable`         | `claude --model` value (planning defaults to the top tier)                 |
-| `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)                    |
-| `infisicalProject`  | `gingur`        | Infisical project slug                                                     |
-| `infisicalEnv`      | `preview`       | Infisical environment slug                                                 |
-| `infisicalPath`     | `/infra/github` | folder holding the two secrets                                             |
-| `runner`            | `ubuntu-latest` | runner label                                                               |
+| Input               | Default         | Notes                                                               |
+| ------------------- | --------------- | ------------------------------------------------------------------- |
+| `issue`             | —               | **required** — ask issue number the turn acts on                    |
+| `dispatch`          | —               | hooks-service dispatch id, surfaced in the run name for correlation |
+| `operator`          | —               | human login for handoff (empty falls back to the event sender)      |
+| `bot`               | `gingur-bot`    | machine-user login the agent runs as                                |
+| `turns`             | `50`            | max agent turns per run (cost bound)                                |
+| `model`             | `fable`         | `claude --model` value (planning defaults to the top tier)          |
+| `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)             |
+| `infisicalProject`  | `gingur`        | Infisical project slug                                              |
+| `infisicalEnv`      | `preview`       | Infisical environment slug                                          |
+| `infisicalPath`     | `/infra/github` | folder holding the two secrets                                      |
+| `runner`            | `ubuntu-latest` | runner label                                                        |
 
 **Scope note:** this workflow plans; it never implements — approved plans
 become `claude-task` issues, which [claude.implement](#claudeimplement--issue-driven-implementation-agent)
-picks up. claude.plan skips issues labeled `claude-task` (the mutual-exclusion
-guard), so the two never fire on the same issue.
-This repo is public: turns start only from issue _assignment_ (which only
-collaborators can perform) and from trusted comments or panel ticks via
-[claude.wake](#claudewake--comment-driven-turn-triggers) (gated as described
-there). The agent surface's one `pull_request`-family trigger is
-[claude.review](#claudereview--pr-review-agent-turn)'s
-`pull_request: [assigned]` — itself operator-gated (only write-access users,
-or hooks via the operator PAT, can assign) and additionally hard-gated to
-bot-authored, same-repo draft PRs.
+picks up (the hooks service routes `claude-ask` issues to plan turns and
+`claude-task` issues to implement turns, so the two never fire on the same
+issue).
+This repo is public: turns start only from `workflow_dispatch`, which
+requires write access — the operator directly, or the hooks service via the
+operator PAT. The intake gestures (trusted comments, panel ticks,
+assignments) are gated server-side in
+[gingur/hooks](https://github.com/gingur/hooks).
 
 ### Notifications
 
@@ -745,8 +722,8 @@ and direct mentions (both on by default).
 
 The implementation sibling of claude.plan. Assign the machine user
 (`gingur-bot`) to an issue labeled `claude-task` (normally created by an
-approved claude.plan turn) and a Claude agent takes one **implementation
-turn**: it studies the task and its parent ask, implements on the
+approved claude.plan turn) — the hooks service turns that gesture into a
+dispatched run — and a Claude agent takes one **implementation turn**: it studies the task and its parent ask, implements on the
 deterministic branch `claude/task-<n>`, verifies with the repo's own checks
 (package.json scripts, CI definitions — discovered, not assumed), commits
 (conventional commits), pushes, and opens a **draft PR** containing
@@ -755,15 +732,17 @@ results. The turn ends like every agent turn: one summary comment and the
 issue re-assigned to you (`if: always()`), failures posted with the run link.
 
 - **Follow-up turns:** comment your feedback on the task issue — the turn
-  starts automatically (task issues are wake-enrolled by their `claude-task`
-  label; re-assigning the bot also works). It checks out the same branch and
+  starts automatically (the hooks service turns trusted replies on
+  `claude-task` issues into implement dispatches; re-assigning the bot also
+  works). It checks out the same branch and
   pushes additional commits; the same PR updates. It never force-pushes.
 - **Hard limits:** never merges, never pushes to the default branch, never
   marks the PR ready for review — review and merge stay yours. If the task is
   ambiguous or an acceptance criterion can't be met as written, it asks on
   the issue instead of pushing speculative code.
-- **Mutual exclusion:** implement fires only on `claude-task`-labeled issues;
-  claude.plan skips them. One issue, one workflow.
+- **Mutual exclusion:** the hooks service routes `claude-task` issues to
+  implement turns and `claude-ask` issues to plan turns. One issue, one
+  workflow.
 - **Billing/auth:** identical to claude.plan — Max-subscription OAuth token
   and `GH_BOT_PAT` fetched from Infisical via OIDC (see the claude.plan
   section); pushes and PRs are authored by the bot PAT, not the workflow
@@ -774,55 +753,36 @@ issue re-assigned to you (`if: always()`), failures posted with the run link.
 
 ### Consumer workflow (copy-paste)
 
-```yaml
-# .github/workflows/implement.yml
-name: Implement
-on:
-  issues:
-    types: [assigned]
+The `implement.yml` executor in
+[Dispatch mode](#dispatch-mode-hooks-service-driven) is the caller shape —
+`workflow_dispatch` only; as with claude.plan, all intake lives in the hooks
+service.
 
-permissions:
-  contents: read
-  issues: write
-  id-token: write
-
-jobs:
-  implement:
-    uses: gingur/devkit/.github/workflows/claude.implement.yml@main
-    with:
-      runner: ${{ vars.RUNNER }}
-```
-
-The trigger stays `on: issues: [assigned]` — as with claude.plan, do **not**
-add `issue_comment` here; comment and checkbox handling lives entirely in the
-separate [claude.wake caller](#claudewake--comment-driven-turn-triggers).
-This is the **assignment-mode** caller. Repos migrated to the hooks-service
-executor shape ([gingur/hooks#64](https://github.com/gingur/hooks/issues/64))
-use the [dispatch-mode caller](#dispatch-mode-hooks-service-driven) instead.
-
-Same per-repo requirements as claude.plan; in `devkit` itself the workflow
-self-triggers and reads the identity from the `INFISICAL_IDENTITY` Actions
+Same per-repo requirements as claude.plan; in `devkit` itself the same
+executor lives at `.github/workflows/implement.yml`, calling the local
+reusable, and reads the identity from the `INFISICAL_IDENTITY` Actions
 variable.
 
-| Input               | Default         | Notes                                                                       |
-| ------------------- | --------------- | --------------------------------------------------------------------------- |
-| `issue`             | —               | task issue number (dispatch mode; empty falls back to the triggering event) |
-| `dispatch`          | —               | hooks-service dispatch id, surfaced in the run name for correlation         |
-| `operator`          | —               | human login for handoff (empty falls back to the event sender)              |
-| `bot`               | `gingur-bot`    | machine-user login the trigger guards on                                    |
-| `turns`             | `100`           | max agent turns per run (cost bound)                                        |
-| `model`             | `fable`         | `claude --model` value (implementation defaults to the top tier)            |
-| `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)                     |
-| `infisicalProject`  | `gingur`        | Infisical project slug                                                      |
-| `infisicalEnv`      | `preview`       | Infisical environment slug                                                  |
-| `infisicalPath`     | `/infra/github` | folder holding the two secrets                                              |
-| `runner`            | `ubuntu-latest` | runner label                                                                |
+| Input               | Default         | Notes                                                               |
+| ------------------- | --------------- | ------------------------------------------------------------------- |
+| `issue`             | —               | **required** — task issue number the turn acts on                   |
+| `dispatch`          | —               | hooks-service dispatch id, surfaced in the run name for correlation |
+| `operator`          | —               | human login for handoff (empty falls back to the event sender)      |
+| `bot`               | `gingur-bot`    | machine-user login the agent runs as                                |
+| `turns`             | `100`           | max agent turns per run (cost bound)                                |
+| `model`             | `fable`         | `claude --model` value (implementation defaults to the top tier)    |
+| `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)             |
+| `infisicalProject`  | `gingur`        | Infisical project slug                                              |
+| `infisicalEnv`      | `preview`       | Infisical environment slug                                          |
+| `infisicalPath`     | `/infra/github` | folder holding the two secrets                                      |
+| `runner`            | `ubuntu-latest` | runner label                                                        |
 
 ## claude.review — PR-review agent turn
 
-The reviewer sibling of claude.plan / claude.implement. Assign the machine
-user (`gingur-bot`) to one of its own draft PRs (head branch `claude/task-<n>`,
-opened by claude.implement) and a Claude agent takes one **review turn**: it
+The reviewer sibling of claude.plan / claude.implement. When one of the
+bot's own draft PRs (head branch `claude/task-<n>`, opened by
+claude.implement) needs a bot pass, the hooks service dispatches one
+**review turn**: the agent
 reads the PR diff, the task issue's acceptance criteria, and the checked-out
 code at the PR head, then delivers exactly one verdict:
 
@@ -840,11 +800,12 @@ used: GitHub rejects both from a PR's own author, and the bot authored the
 PR. The operator's real approval is what drives merge — the bot never
 approves.
 
-- **How a review starts:** the event layer (`gingur/hooks`) — or any
-  collaborator, manually — assigns the bot to the PR. The job hard-gates on
-  **all five**: the assignee is the bot; the PR is bot-authored; the head
-  branch is `claude/task-*`; head repo == base repo (fork PRs never qualify);
-  the PR is an open draft.
+- **How a review starts:** the event layer (`gingur/hooks`) dispatches
+  `review.yml` with the PR number — or any collaborator runs
+  `gh workflow run review.yml -f pr=<n>` manually. The Resolve step
+  hard-gates on API truth before checkout: the PR is bot-authored; the head
+  branch is `claude/task-*`; head repo == base repo (fork PRs never
+  qualify); the PR is an open draft.
 - **Compute plane only:** the workflow contains **no** intake or cycle logic
   — no auto-request of the next round, no rounds cap, no already-reviewed
   dedup. Deciding _when_ a review fires and looping a submitted review back
@@ -861,66 +822,50 @@ approves.
 
 ### Consumer workflow (copy-paste)
 
-```yaml
-# .github/workflows/review.yml
-name: Review
-on:
-  pull_request:
-    types: [assigned]
+The `review.yml` executor in
+[Dispatch mode](#dispatch-mode-hooks-service-driven) is the caller shape —
+`workflow_dispatch` only. There are no `pull_request` triggers on the agent
+surface: a review turn starts only by dispatch (write access required), and
+the Resolve step re-derives the secrets-safety guards (bot-authored,
+same-repo, open draft `claude/task-*`) from API truth before checkout. That
+is why this workflow may take a `runner` input while the preview workflows
+may not (see [Routing policy](#routing-policy-public-repos)).
 
-permissions:
-  contents: read
-  pull-requests: write
-  issues: write
-  id-token: write
+Same per-repo requirements as claude.plan; in `devkit` itself the same
+executor lives at `.github/workflows/review.yml`, calling the local
+reusable, and reads the identity from the `INFISICAL_IDENTITY` Actions
+variable.
 
-jobs:
-  review:
-    uses: gingur/devkit/.github/workflows/claude.review.yml@main
-    with:
-      runner: ${{ vars.RUNNER }}
-```
-
-Same per-repo requirements as claude.plan; in `devkit` itself the workflow
-self-triggers and reads the identity from the `INFISICAL_IDENTITY` Actions
-variable. On the "no `pull_request` triggers" stance: `pull_request:
-[assigned]` is the one deliberate exception — assignment is operator-gated
-(only write-access users, or hooks via the operator PAT, can assign), unlike
-code-driven `pull_request` events, and the job additionally hard-gates on
-bot-authored, same-repo, draft `claude/task-*` PRs. That is also why this
-workflow may take a `runner` input while the preview workflows may not (see
-[Routing policy](#routing-policy-public-repos)).
-This is the **assignment-mode** caller. Repos migrated to the hooks-service
-executor shape ([gingur/hooks#64](https://github.com/gingur/hooks/issues/64))
-use the [dispatch-mode caller](#dispatch-mode-hooks-service-driven) instead.
-
-| Input               | Default         | Notes                                                                         |
-| ------------------- | --------------- | ----------------------------------------------------------------------------- |
-| `pr`                | —               | pull request number (dispatch mode; empty falls back to the triggering event) |
-| `dispatch`          | —               | hooks-service dispatch id, surfaced in the run name for correlation           |
-| `operator`          | —               | human login for handoff (empty falls back to the event sender)                |
-| `bot`               | `gingur-bot`    | machine-user login the trigger guards on                                      |
-| `turns`             | `50`            | max agent turns per run (cost bound)                                          |
-| `model`             | `fable`         | `claude --model` value (review defaults to the top tier)                      |
-| `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)                       |
-| `infisicalProject`  | `gingur`        | Infisical project slug                                                        |
-| `infisicalEnv`      | `preview`       | Infisical environment slug                                                    |
-| `infisicalPath`     | `/infra/github` | folder holding the two secrets                                                |
-| `runner`            | `ubuntu-latest` | runner label                                                                  |
+| Input               | Default         | Notes                                                               |
+| ------------------- | --------------- | ------------------------------------------------------------------- |
+| `pr`                | —               | **required** — pull request number the turn reviews                 |
+| `dispatch`          | —               | hooks-service dispatch id, surfaced in the run name for correlation |
+| `operator`          | —               | human login for handoff (empty falls back to the event sender)      |
+| `bot`               | `gingur-bot`    | machine-user login the agent runs as                                |
+| `turns`             | `50`            | max agent turns per run (cost bound)                                |
+| `model`             | `fable`         | `claude --model` value (review defaults to the top tier)            |
+| `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)             |
+| `infisicalProject`  | `gingur`        | Infisical project slug                                              |
+| `infisicalEnv`      | `preview`       | Infisical environment slug                                          |
+| `infisicalPath`     | `/infra/github` | folder holding the two secrets                                      |
+| `runner`            | `ubuntu-latest` | runner label                                                        |
 
 ## Dispatch mode (hooks-service-driven)
 
-[gingur/hooks#64](https://github.com/gingur/hooks/issues/64) flips consumer
+[gingur/hooks#64](https://github.com/gingur/hooks/issues/64) flipped consumer
 repos from assignment-triggered agent callers to `workflow_dispatch`-only
 executors: the hooks service owns intake (comments, panel ticks, review
 loops), gates admission, and dispatches each turn with explicit inputs
-instead of assigning the bot.
+instead of assigning the bot. The service dispatches by **filename** —
+`plan.yml` / `implement.yml` / `review.yml` — so every enrolled repo
+(devkit included, calling its own reusables locally) carries the three
+executors below verbatim.
 
-**Migration posture.** The reusables are **dual-mode**: the
-assignment-triggered callers above keep working unchanged, repos flip one at
-a time per [hooks#64](https://github.com/gingur/hooks/issues/64), and a flip
-is reversible (restore the assignment-mode caller) until the retirement task
-([#124](https://github.com/gingur/devkit/issues/124)) lands.
+**Migration posture.** Complete
+([#124](https://github.com/gingur/devkit/issues/124)): the reusables accept
+`workflow_dispatch` / `workflow_call` only, `issue` / `pr` are required
+inputs, and the assignment-mode callers and `claude.wake` are retired
+fleet-wide.
 
 The template shape, per turn kind:
 
@@ -1051,94 +996,3 @@ jobs:
 `implement.yml -f issue=<n>` / `review.yml -f pr=<n>`) starts a turn without
 the service — there is no `dispatch` id, so the hooks ledger correlates the
 run via the legacy `#N` fallback.
-
-## claude.wake — comment-driven turn triggers
-
-> **Slated for retirement.** The
-> [hooks#64](https://github.com/gingur/hooks/issues/64) rollout moves
-> comment/tick intake into the hooks service; once the fleet is flipped,
-> this workflow is retired ([#124](https://github.com/gingur/devkit/issues/124)).
-> It works unchanged until then.
-
-The trigger layer behind the reply-driven cycle: a separate always-on workflow
-(`issue_comment: [created, edited]`) that watches enrolled issues and starts
-an agent turn by assigning the bot — you drive turns by replying or tapping a
-checkbox instead of touching the assignee field. It fires when:
-
-- a **trusted user comments** on an open issue labeled `claude-ask` or
-  `claude-task` — prefix the comment with `[hold]` to comment without waking;
-- a **checkbox is ticked** in a bot-authored **action panel** — ticking edits
-  the comment, and that edit is the trigger.
-
-Waking removes and re-adds the bot as assignee, so it works even when the bot
-is already assigned (a comment landing mid-turn queues a follow-up turn via
-the agent workflows' per-issue concurrency instead of getting lost).
-
-**Security model.** Created comments are gated on the server-computed
-`author_association` — only `OWNER` / `MEMBER` / `COLLABORATOR` qualify
-(`CONTRIBUTOR` / `NONE` are deliberately excluded), so drive-by comments on a
-public repo can't start paid turns. Ticks need no association check: only
-users with write access can edit another user's comment, and the gate
-additionally requires the edited comment to be bot-authored and carry the
-panel marker. Label enrollment (`claude-ask` is auto-applied by claude.plan's
-first turn; `claude-task` issues are created labeled) keeps arbitrary issues
-from waking the agent. Wake assigns with `GH_BOT_PAT` rather than the
-workflow's own token because events caused by `GITHUB_TOKEN` never trigger
-workflows — a `GITHUB_TOKEN` assignment would silently start nothing.
-
-**Action panels** are the operator's one-tap controls: bot comments opening
-with the `<!-- claude:action-panel -->` marker and offering `- [ ]`
-checkboxes. At most **one live panel per issue** — the `claude.handoff`
-composite posts the turn's panel (Approve after plan turns) and neutralizes
-older panels into plain-text decision records (marker swapped to
-`<!-- claude:action-panel:done -->`, ticked boxes rendered as `✔ …`), so the
-thread reads as a decision log and stale ticks can't re-trigger. When an
-agent question has enumerable answers it posts a **choices menu** — one
-option per checkbox; a genuinely multi-select menu ends with a **Submit**
-box, ticked last to send the selection.
-
-**Debounce.** Per-issue `concurrency` with `cancel-in-progress: true` plus a
-leading `quiet`-seconds sleep coalesce bursts: each qualifying event cancels
-the pending wake and restarts the quiet timer, so a reply-then-tick or a
-flurry of ticks assigns once, from the final state. Multi-select panels
-extend this via the Submit convention above — the wake gate arms only once
-the **Submit** box is ticked, so earlier ticks on that panel never fire.
-
-**Operator fallback.** Wake assigns via the bot PAT, so the assignment
-event's sender is the bot itself; the turn-end handoff then falls back to
-`github.repository_owner` as the operator to hand the issue back to. A
-direct human assignment hands back to that human, as before.
-
-### Consumer workflow (copy-paste)
-
-```yaml
-# .github/workflows/wake.yml
-name: Wake
-on:
-  issue_comment:
-    types: [created, edited]
-permissions:
-  contents: read
-  id-token: write
-jobs:
-  wake:
-    uses: gingur/devkit/.github/workflows/claude.wake.yml@main
-    with:
-      runner: ${{ vars.RUNNER }}
-```
-
-This caller lives alongside the claude.plan / claude.implement callers and is
-the only place `issue_comment` is handled — the agent callers keep their
-`on: issues: [assigned]` triggers unchanged. In `devkit` itself the workflow
-self-triggers (no caller needed) and reads the identity from the
-`INFISICAL_IDENTITY` Actions variable.
-
-| Input               | Default         | Notes                                                         |
-| ------------------- | --------------- | ------------------------------------------------------------- |
-| `bot`               | `gingur-bot`    | machine-user login to assign (the agent identity wake starts) |
-| `quiet`             | `20`            | debounce quiet period in seconds; each new event restarts it  |
-| `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)       |
-| `infisicalProject`  | `gingur`        | Infisical project slug                                        |
-| `infisicalEnv`      | `preview`       | Infisical environment slug                                    |
-| `infisicalPath`     | `/infra/github` | folder holding the two secrets                                |
-| `runner`            | `ubuntu-latest` | runner label                                                  |

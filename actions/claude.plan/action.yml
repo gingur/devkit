@@ -16,8 +16,7 @@ inputs:
     default: 'fable'
   issue:
     description: 'Ask issue number the turn acts on'
-    required: false
-    default: ${{ github.event.issue.number }}
+    required: true
   operator:
     description: 'Human login this turn serves; empty falls back to the event sender (repo owner when the sender is the bot)'
     required: false

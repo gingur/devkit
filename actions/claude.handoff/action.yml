@@ -1,5 +1,5 @@
 name: 'Claude turn-end handoff'
-description: 'End an agent workflow turn: hand off to the operator (re-assign the issue from the bot), sweep action panels on success, and, on any non-success status, post a failure comment that @mentions the operator. Guarantee hierarchy: the handoff and failure comment run on github.token unconditionally, so they survive an Infisical outage; panels are best-effort — the default panel is posted with the bot PAT (GH_BOT_PAT from the job env) so wake can arm it, and is skipped when the PAT is absent. Requires issues: write in the calling job.'
+description: 'End an agent workflow turn: hand off to the operator (re-assign the issue from the bot), sweep action panels on success, and, on any non-success status, post a failure comment that @mentions the operator. Guarantee hierarchy: the handoff and failure comment run on github.token unconditionally, so they survive an Infisical outage; panels are best-effort — the default panel is posted with the bot PAT (GH_BOT_PAT from the job env) so the hooks service can arm it, and is skipped when the PAT is absent. Requires issues: write in the calling job.'
 
 inputs:
   bot:
@@ -15,9 +15,8 @@ inputs:
     description: 'Human word naming the turn kind for the comment text (e.g., Planning, Implementation)'
     required: true
   issue:
-    description: 'Issue or PR number to hand off (PRs are issues to the assignee/comment/reactions APIs — PR-triggered callers pass github.event.pull_request.number)'
-    required: false
-    default: ${{ github.event.issue.number }}
+    description: 'Issue or PR number to hand off (PRs are issues to the assignee/comment/reactions APIs — review callers pass the PR number)'
+    required: true
   panel:
     description: 'Markdown body for the default action-panel comment posted on success. Empty posts nothing; suppressed when the agent posted its own panel this turn.'
     required: false
@@ -38,8 +37,9 @@ runs:
         gh issue edit "$ISSUE" --repo "$REPO" \
           --remove-assignee "$BOT" --add-assignee "$OPERATOR"
 
-    # Remove the bot's 👀 acknowledgements (added by claude.wake on the
-    # triggering comment) — the turn is over either way, success or failure.
+    # Remove the bot's 👀 acknowledgements (added by the intake layer —
+    # gingur/hooks — on the triggering comment) — the turn is over either
+    # way, success or failure.
     # Reactions belong to the bot user, so removal needs the bot PAT (from the
     # job env, like Panels); best-effort when it's absent.
     - name: Unack
@@ -63,10 +63,11 @@ runs:
 
     # Action panels are the operator's one-tap controls — at most one live per
     # issue. Listing and neutralizing use github.token: PATCH keeps the original
-    # author, and GITHUB_TOKEN events never trigger workflows (wake additionally
-    # ignores bot-sender events and bodies without "- [x] "). Posting the
-    # default panel uses GH_BOT_PAT from the job env — the panel must be
-    # bot-authored or wake's edited-gate can never arm it — and is best-effort:
+    # author, and GITHUB_TOKEN events never trigger workflows (the hooks
+    # service additionally ignores bot-sender events and bodies without
+    # "- [x] "). Posting the default panel uses GH_BOT_PAT from the job env —
+    # the panel must be bot-authored or the hooks service's panel-edit gate
+    # can never arm it — and is best-effort:
     # no PAT (secrets fetch failed), no panel; operator replies still start
     # turns. The neutralize sweep is the mechanical backstop behind the agent's
     # semantic defusal — it guarantees no stale actionable surface survives
@@ -147,8 +148,8 @@ runs:
         Fix the cause, then reply here (any reply starts a new turn) or re-assign the bot — turns are safe to repeat."
 
     # The one-tap counterpart to the failure comment above — same pattern as
-    # Approve. Panels must be bot-authored or wake's edited-gate can never arm
-    # them, so this posts with GH_BOT_PAT and is best-effort: no PAT (a secrets
+    # Approve. Panels must be bot-authored or the hooks service's panel-edit
+    # gate can never arm them, so this posts with GH_BOT_PAT and is best-effort: no PAT (a secrets
     # fetch failure may be the very thing that failed the turn), no panel; the
     # github.token comment above already carries the reply path.
     - name: Retry panel

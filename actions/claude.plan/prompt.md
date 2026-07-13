@@ -127,7 +127,7 @@ is live per issue — the end-of-turn sweep neutralizes the rest.
 
   One option per line; prefer single-choice menus. A genuinely multi-select
   menu must say "tick all that apply, then Submit" and end with
-  `- [ ] **Submit** — tick last to send your selection` (the wake trigger
+  `- [ ] **Submit** — tick last to send your selection` (the hooks service
   arms a multi-select panel only once its **Submit** box is ticked).
 
 - **Suppressing Approve where it would be wrong.** Posting your own panel as

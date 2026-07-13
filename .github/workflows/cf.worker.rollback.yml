@@ -19,15 +19,15 @@ on:
         required: false
         default: ''
       infisicalProject:
-        description: 'Infisical project slug (e.g., gingur-7xjq)'
+        description: 'Infisical project slug (e.g., gingur)'
         type: string
         required: true
       infisicalEnv:
-        description: 'Infisical environment slug (e.g., production)'
+        description: 'Infisical environment slug (e.g., public)'
         type: string
         required: true
       infisicalPath:
-        description: 'Infisical secret folder path (e.g., /troyrhinehart)'
+        description: 'Infisical secret folder path (e.g., /troyrhinehart/cloudflare)'
         type: string
         required: true
       infisicalIdentity:

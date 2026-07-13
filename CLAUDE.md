@@ -223,7 +223,7 @@ name = "<app>-preview"   # placeholder; overridden per-PR by --name, no custom r
 - Each PR gets an immutable masked URL `https://pr-<N>.<domain>`; content
   updates on each push; the worker + custom domain are deleted on PR close.
 - The `infisicalEnv` for previews points at wherever the CF token lives (often
-  `production`) — it is independent of the `env: preview` that drives
+  `public`) — it is independent of the `env: preview` that drives
   `wrangler --env`.
 - Previews run only for **same-repo (branch) PRs**: fork PRs get no OIDC/secrets by
   design, so they don't deploy with our credentials.

@@ -51,10 +51,10 @@ on:
         required: false
         default: '50'
       model:
-        description: 'Model (claude --model value). Planning defaults to the strongest tier; empty falls back to the account default.'
+        description: 'Model (claude --model value). Planning defaults to Opus; empty falls back to the account default.'
         type: string
         required: false
-        default: 'fable'
+        default: 'opus'
       infisicalIdentity:
         description: 'Infisical machine identity UUID with OIDC trust for this repo'
         type: string
@@ -138,7 +138,7 @@ jobs:
         with:
           bot: ${{ inputs.bot || 'gingur-bot' }}
           turns: ${{ inputs.turns || '50' }}
-          model: ${{ inputs.model || 'fable' }}
+          model: ${{ inputs.model || 'opus' }}
           issue: ${{ env.ISSUE }}
           operator: ${{ env.OPERATOR }}
 

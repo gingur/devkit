@@ -13,7 +13,7 @@ inputs:
   model:
     description: 'Model (claude --model value). Implementation defaults to the strongest tier; empty falls back to the account default.'
     required: false
-    default: 'fable'
+    default: 'sonnet'
   issue:
     description: 'Task issue number the turn acts on'
     required: true

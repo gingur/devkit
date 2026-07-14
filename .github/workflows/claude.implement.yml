@@ -108,9 +108,7 @@ jobs:
       # the bot itself — fall back to the repo owner as the operator.
       OPERATOR: ${{ inputs.operator || (github.event.sender.login != (inputs.bot || 'gingur-bot') && github.event.sender.login || github.repository_owner) }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
+      # Secrets first so env.GH_BOT_PAT is available to the checkout below.
       - name: Secrets
         uses: gingur/devkit/actions/infisical.secrets.fetch@main
         with:
@@ -118,6 +116,18 @@ jobs:
           project: ${{ inputs.infisicalProject || 'gingur' }}
           env: ${{ inputs.infisicalEnv || 'preview' }}
           path: ${{ inputs.infisicalPath || '/infra/github' }}
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # Persist the write-capable bot PAT as git's credential — NOT the
+          # read-only ephemeral GITHUB_TOKEN checkout persists by default (this
+          # job is `contents: read`). Without this, the implement turn's branch
+          # push authenticates as the read-only token and 403s, even though the
+          # PAT (used by `gh`) reports push access. The persisted header wins
+          # over any remote-URL token the claude action sets, so it must be the
+          # PAT here.
+          token: ${{ env.GH_BOT_PAT }}
 
       - name: Implement
         uses: gingur/devkit/actions/claude.implement@main

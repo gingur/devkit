@@ -1,5 +1,5 @@
 name: 'Claude reconcile turn'
-description: 'One shadow reconcile turn over the driver fleet: read the driver_inbox past the driver cursor plus the driver_actions ledger and ground truth, then act per the checked-out driver repo policy.md. Run-mode is shadow (execute:false) — zero real GitHub/side-effecting actions. Requires CLAUDE_CODE_OAUTH_TOKEN, GH_DRIVER_PAT, and DATABASE_URL in env (use infisical.secrets.fetch first). Billed to the Claude Max subscription.'
+description: 'One shadow reconcile turn over the driver fleet: read the driver_inbox past the driver cursor plus the driver_actions ledger and ground truth, then act per the checked-out driver repo policy.md. Run-mode is shadow (execute:false) — zero real GitHub/side-effecting actions. Requires CLAUDE_CODE_OAUTH_TOKEN, GH_DRIVER_PAT, and DATABASE_URL in env (use infisical.secrets.fetch first). A gh-guard PreToolUse hook denies raw `gh` mutations typed into a Bash tool call — belt-and-suspenders behind shadow mode (gingur/devkit#136). Billed to the Claude Max subscription.'
 
 inputs:
   bot:
@@ -41,6 +41,16 @@ runs:
           cat "${GITHUB_ACTION_PATH}/prompt.md"
           echo 'EOF_9c4e1b'
         } >> "$GITHUB_ENV"
+        # gh-guard PreToolUse hook (devkit#136): settings.json ships with a
+        # __GH_GUARD_HOOK_PATH__ placeholder because GITHUB_ACTION_PATH is a
+        # per-run runner path, not something a static committed JSON file
+        # can expand itself. Resolve it here and emit the templated settings
+        # as an env var, same pattern as PROMPT_MD above.
+        {
+          echo 'CLAUDE_SETTINGS<<EOF_1f6a3d'
+          sed "s|__GH_GUARD_HOOK_PATH__|${GITHUB_ACTION_PATH}|" "${GITHUB_ACTION_PATH}/settings.json"
+          echo 'EOF_1f6a3d'
+        } >> "$GITHUB_ENV"
 
     - name: Reconcile
       uses: anthropics/claude-code-action@v1
@@ -52,6 +62,7 @@ runs:
         github_token: ${{ env.GH_DRIVER_PAT }}
         path_to_claude_code_executable: ${{ env.CLAUDE_EXEC }}
         prompt: ${{ env.PROMPT_MD }}
+        settings: ${{ env.CLAUDE_SETTINGS }}
         claude_args: |
           --dangerously-skip-permissions
           --max-turns ${{ inputs.turns }}

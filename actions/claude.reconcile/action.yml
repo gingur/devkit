@@ -51,20 +51,23 @@ runs:
           sed "s|__GH_GUARD_HOOK_PATH__|${GITHUB_ACTION_PATH}|" "${GITHUB_ACTION_PATH}/settings.json"
           echo 'EOF_1f6a3d'
         } >> "$GITHUB_ENV"
-        # Isolate this turn's Claude config to a per-run temp dir. On the
-        # self-hosted runner HOME=the operator's home, so claude-code-action's
-        # `settings` input would otherwise PERSIST the gh-guard PreToolUse hook
-        # into the shared ~/.claude/settings.json — blocking every other claude
-        # on the box (incl. this driver session and the pipeline turns). Auth
-        # comes from CLAUDE_CODE_OAUTH_TOKEN, so an empty config dir is fine.
-        mkdir -p "${RUNNER_TEMP}/reconcile-claude-config"
+        # Isolate this turn's HOME to a per-run temp dir. On the self-hosted
+        # runner HOME=the operator's home, and claude-code-action's `settings`
+        # input persists the gh-guard PreToolUse hook into HOME-based
+        # ~/.claude/settings.json (CLAUDE_CONFIG_DIR does NOT redirect it) —
+        # which would block every other claude on the box (this driver session
+        # and the pipeline turns) from raw gh. Redirecting HOME sends that write
+        # to a throwaway dir, and also stops the operator's ~/.claude/CLAUDE.md
+        # persona from loading. Auth is via CLAUDE_CODE_OAUTH_TOKEN (env,
+        # HOME-independent); the driver persona loads from the checked-out repo.
+        mkdir -p "${RUNNER_TEMP}/reconcile-home/.claude"
 
     - name: Reconcile
       uses: anthropics/claude-code-action@v1
       env:
         GH_TOKEN: ${{ env.GH_DRIVER_PAT }}
         DATABASE_URL: ${{ env.DATABASE_URL }}
-        CLAUDE_CONFIG_DIR: ${{ runner.temp }}/reconcile-claude-config
+        HOME: ${{ runner.temp }}/reconcile-home
       with:
         claude_code_oauth_token: ${{ env.CLAUDE_CODE_OAUTH_TOKEN }}
         github_token: ${{ env.GH_DRIVER_PAT }}

@@ -1,0 +1,58 @@
+name: 'Claude reconcile turn'
+description: 'One shadow reconcile turn over the driver fleet: read the driver_inbox past the driver cursor plus the driver_actions ledger and ground truth, then act per the checked-out driver repo policy.md. Run-mode is shadow (execute:false) — zero real GitHub/side-effecting actions. Requires CLAUDE_CODE_OAUTH_TOKEN, GH_DRIVER_PAT, and DATABASE_URL in env (use infisical.secrets.fetch first). Billed to the Claude Max subscription.'
+
+inputs:
+  bot:
+    description: 'Machine-user login the agent runs as (the agent identity)'
+    required: false
+    default: 'gingur-bot'
+  turns:
+    description: 'Max agent turns per run (cost bound)'
+    required: false
+    default: '100'
+  model:
+    description: 'Model (claude --model value). Reconcile defaults to the strongest tier; empty falls back to the account default.'
+    required: false
+    default: 'opus'
+  operator:
+    description: 'Human login this turn serves; empty falls back to the event sender (repo owner when the sender is the bot)'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Instructions
+      id: instructions
+      shell: bash
+      run: |
+        # Self-hosted runners share the operator HOME: concurrent turns
+        # racing claude-code-action's installer over ~/.claude/downloads
+        # delete each other's download mid-run (devkit#92 + hooks#18,
+        # 2026-07-10). Prefer the host's own install; empty falls back to
+        # the installer.
+        echo "CLAUDE_EXEC=$([[ -x "$HOME/.local/bin/claude" ]] && echo "$HOME/.local/bin/claude")" >> "$GITHUB_ENV"
+        # The fixed reconcile instruction goes straight to the `prompt:`
+        # field below — unlike plan/implement/review this does NOT append
+        # the shared claude.agent.md system prompt: the checked-out driver
+        # repo's own CLAUDE.md + policy.md govern this turn instead.
+        {
+          echo 'PROMPT_MD<<EOF_9c4e1b'
+          cat "${GITHUB_ACTION_PATH}/prompt.md"
+          echo 'EOF_9c4e1b'
+        } >> "$GITHUB_ENV"
+
+    - name: Reconcile
+      uses: anthropics/claude-code-action@v1
+      env:
+        GH_TOKEN: ${{ env.GH_DRIVER_PAT }}
+        DATABASE_URL: ${{ env.DATABASE_URL }}
+      with:
+        claude_code_oauth_token: ${{ env.CLAUDE_CODE_OAUTH_TOKEN }}
+        github_token: ${{ env.GH_DRIVER_PAT }}
+        path_to_claude_code_executable: ${{ env.CLAUDE_EXEC }}
+        prompt: ${{ env.PROMPT_MD }}
+        claude_args: |
+          --dangerously-skip-permissions
+          --max-turns ${{ inputs.turns }}
+          ${{ inputs.model && format('--model {0}', inputs.model) || '' }}

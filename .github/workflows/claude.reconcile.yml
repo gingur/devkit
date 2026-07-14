@@ -1,0 +1,124 @@
+name: Reconcile
+# run-name carries the [d:<uuid>] dispatch correlation token the hooks
+# service uses (workflow_run.display_title -> dispatch ledger). Reconcile is
+# not issue-scoped (it acts on the whole driver fleet), so there's no `#N`
+# companion like plan/implement/review carry.
+run-name: "Reconcile${{ inputs.dispatch && format(' [d:{0}]', inputs.dispatch) || '' }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      dispatch:
+        description: 'Hooks-service dispatch id, surfaced in run-name for run correlation'
+        type: string
+        required: false
+        default: ''
+      operator:
+        description: 'Human login this turn serves; empty falls back to the event sender'
+        type: string
+        required: false
+        default: ''
+  workflow_call:
+    inputs:
+      dispatch:
+        description: 'Hooks-service dispatch id, surfaced in run-name for run correlation'
+        type: string
+        required: false
+        default: ''
+      operator:
+        description: 'Human login this turn serves; empty falls back to the event sender'
+        type: string
+        required: false
+        default: ''
+      runner:
+        description: 'Runner label'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+      bot:
+        description: 'Machine-user login the agent runs as (the agent identity)'
+        type: string
+        required: false
+        default: 'gingur-bot'
+      turns:
+        description: 'Max agent turns per run'
+        type: string
+        required: false
+        default: '100'
+      model:
+        description: 'Model (claude --model value). Reconcile defaults to Opus; empty falls back to the account default.'
+        type: string
+        required: false
+        default: 'opus'
+      infisicalIdentity:
+        description: 'Infisical machine identity UUID with OIDC trust for this repo'
+        type: string
+        required: false
+        default: ''
+      infisicalProject:
+        description: 'Infisical project slug'
+        type: string
+        required: false
+        default: 'gingur'
+      infisicalEnv:
+        description: 'Infisical environment slug — the caller supplies where driver creds live'
+        type: string
+        required: false
+        default: ''
+      infisicalPath:
+        description: 'Infisical secret folder path — the caller supplies where driver creds live'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  id-token: write
+
+# Replaces the retired driver seat-lock: at most one reconcile turn runs
+# fleet-wide at a time. A static top-level group with cancel-in-progress:
+# false means a second dispatch queues behind the running one rather than
+# running concurrently or cancelling it.
+concurrency:
+  group: driver-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Reconcile
+    # No admission gate here: this workflow is compute plane only, same as
+    # plan/implement/review. workflow_dispatch requires write access — the
+    # trust bar for a manual run.
+    # vars.RUNNER covers devkit's own direct workflow_dispatch runs; in
+    # workflow_call mode vars resolves against the calling repo, so callers
+    # must pass `runner` explicitly.
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    steps:
+      # Secrets first so env.GH_DRIVER_PAT is available to the checkout
+      # below. The caller (gingur/driver's thin dispatcher) supplies the
+      # Infisical path where driver fleet creds live.
+      - name: Secrets
+        uses: gingur/devkit/actions/infisical.secrets.fetch@main
+        with:
+          identity: ${{ inputs.infisicalIdentity || vars.INFISICAL_IDENTITY }}
+          project: ${{ inputs.infisicalProject || 'gingur' }}
+          env: ${{ inputs.infisicalEnv }}
+          path: ${{ inputs.infisicalPath }}
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # Check out the driver repo, not devkit: the driver's CLAUDE.md,
+          # skills/, and policy.md govern the reconcile turn, and the
+          # working directory is what Claude Code auto-loads context from.
+          repository: gingur/driver
+          token: ${{ env.GH_DRIVER_PAT }}
+
+      - name: Reconcile
+        uses: gingur/devkit/actions/claude.reconcile@main
+        with:
+          bot: ${{ inputs.bot || 'gingur-bot' }}
+          turns: ${{ inputs.turns || '100' }}
+          model: ${{ inputs.model || 'opus' }}
+          operator: ${{ inputs.operator || (github.event.sender.login != (inputs.bot || 'gingur-bot') && github.event.sender.login || github.repository_owner) }}

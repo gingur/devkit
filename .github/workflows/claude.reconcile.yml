@@ -61,15 +61,15 @@ on:
         required: false
         default: 'gingur'
       infisicalEnv:
-        description: 'Infisical environment slug — the caller supplies where driver creds live'
+        description: 'Infisical environment slug where driver creds live (GH_DRIVER_PAT/CLAUDE_CODE_OAUTH_TOKEN/DATABASE_URL)'
         type: string
         required: false
-        default: ''
+        default: 'public'
       infisicalPath:
-        description: 'Infisical secret folder path — the caller supplies where driver creds live'
+        description: 'Infisical secret folder path where driver creds live'
         type: string
         required: false
-        default: ''
+        default: '/infra/github'
 
 permissions:
   contents: read

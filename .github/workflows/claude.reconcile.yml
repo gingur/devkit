@@ -64,7 +64,7 @@ on:
         description: 'Infisical environment slug where driver creds live (GH_DRIVER_PAT/CLAUDE_CODE_OAUTH_TOKEN/DATABASE_URL)'
         type: string
         required: false
-        default: 'public'
+        default: 'preview'
       infisicalPath:
         description: 'Infisical secret folder path where driver creds live'
         type: string

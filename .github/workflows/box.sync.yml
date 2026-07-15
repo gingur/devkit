@@ -1,0 +1,84 @@
+name: Box sync
+
+# Reusable box-sync: on a merge to main, pull the box's canonical clone of the
+# calling repo, validate it, and stage the merge into the pending journal for
+# the always-on gingur-box-watch to apply out-of-band. Generalizes infra's
+# original box-sync so service repos (hooks, driver) ride the same pipeline —
+# the apply (gingur-box-apply, in gingur/infra) pulls + relevance-gated-restarts
+# the mapped process, so an unrelated change never bounces a running service.
+#
+# The job must NOT apply the update itself: it runs on the box's runner, and a
+# restart / `project update` may restart that runner mid-job. It only stages
+# (appends one journal line) and ensures the watcher is installed; the watcher
+# waits a settle so this job reports green first, then applies outside the
+# job's cgroup. The apply posts the terminal `box-apply` commit status.
+#
+# Hardcoded `runs-on: local` — this workflow is meaningless off the box; there
+# is deliberately no runner input.
+
+on:
+  workflow_call:
+    inputs:
+      validate:
+        description: 'Shell command run against the pulled clone before staging. Non-zero = do not stage (never apply/restart into a broken sync).'
+        type: string
+        required: true
+      cwd:
+        description: 'Directory (relative to the repo root) to run validate in.'
+        type: string
+        required: false
+        default: '.'
+
+concurrency:
+  group: box-sync
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: local
+    steps:
+      - name: Pull canonical clone
+        # Canonical clone lives at ~/github/<owner>/<repo>; the ~/.local/bin
+        # symlinks and the apply operate on it, never the runner workspace.
+        # --ff-only: a divergent box clone must fail loudly, not silently merge.
+        run: git -C "$HOME/github/${GITHUB_REPOSITORY}" pull --ff-only
+
+      - name: Validate (do not stage a broken sync)
+        env:
+          VALIDATE: ${{ inputs.validate }}
+          CWD: ${{ inputs.cwd }}
+        run: |
+          cd "$HOME/github/${GITHUB_REPOSITORY}/${CWD}"
+          bash -c "$VALIDATE"
+
+      - name: Stage pending apply
+        # One journal line per merge: "<sha> <repo> <run_url>". The apply
+        # snapshots + prunes only on full success, so killed/failed applies are
+        # retried cumulatively by the next attempt.
+        run: |
+          mkdir -p "$HOME/.local/state"
+          echo "$GITHUB_SHA $GITHUB_REPOSITORY $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            >> "$HOME/.local/state/gingur-box-apply.pending"
+
+      - name: Ensure watcher
+        # Idempotent + self-sufficient every run: stack-sync (from the infra
+        # canonical clone) installs/enables — never restarts — the watcher unit
+        # and keeps linger on, so its boot-time reconcile picks up the line
+        # staged above. Safe in-line: stack-sync only renders files and manages
+        # the unit, it never runs `project update`.
+        run: |
+          systemctl --user stop gingur-box-apply.timer gingur-box-apply.service 2>/dev/null || true
+          loginctl enable-linger "$USER" 2>/dev/null || true
+          "$HOME/.bun/bin/bun" "$HOME/github/gingur/infra/box/bin/gingur-stack-sync.ts"
+
+      - name: Post pending status
+        # Via the box's operator gh (not github.token): the apply can't use a
+        # job token that expires at job end, so both sides share the operator
+        # auth path and `permissions:` stays contents: read.
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state=pending -f context=box-apply \
+            -f description="apply staged (watcher applies in ~15s)" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

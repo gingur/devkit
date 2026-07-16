@@ -14,6 +14,11 @@ on:
         description: 'Ask issue number the turn acts on'
         type: string
         required: true
+      intent:
+        description: 'What the EM does this turn: plan (produce/refine the plan) | approve (materialize the plan into task sub-issues) | signoff (verify the objective is delivered across the tasks). The Driver/PM selects the intent per dispatch; approval is an explicit dispatch, not a panel tick.'
+        type: string
+        required: false
+        default: 'plan'
       dispatch:
         description: 'Hooks-service dispatch id, surfaced in run-name for run correlation'
         type: string
@@ -30,6 +35,11 @@ on:
         description: 'Ask issue number the turn acts on'
         type: string
         required: true
+      intent:
+        description: 'What the EM does this turn: plan (produce/refine the plan) | approve (materialize the plan into task sub-issues) | signoff (verify the objective is delivered across the tasks). The Driver/PM selects the intent per dispatch; approval is an explicit dispatch, not a panel tick.'
+        type: string
+        required: false
+        default: 'plan'
       dispatch:
         description: 'Hooks-service dispatch id, surfaced in run-name for run correlation'
         type: string
@@ -92,7 +102,7 @@ concurrency:
 
 jobs:
   plan:
-    name: 'Plan ${{ github.event.repository.name }}#${{ inputs.issue }}'
+    name: 'Plan ${{ github.event.repository.name }}#${{ inputs.issue }} (${{ inputs.intent }})'
     # No admission gate here: this workflow is compute plane only. The hooks
     # service gates admission before dispatching, and workflow_dispatch
     # requires write access — the same trust bar the retired assignment
@@ -104,6 +114,9 @@ jobs:
     timeout-minutes: 20
     env:
       ISSUE: ${{ inputs.issue }}
+      # Intent selects the EM's job for this turn (plan | approve | signoff);
+      # default 'plan' covers the workflow_dispatch/legacy path that omits it.
+      INTENT: ${{ inputs.intent || 'plan' }}
       # The hooks service dispatches via the bot PAT, so the sender can be
       # the bot itself — fall back to the repo owner as the operator.
       OPERATOR: ${{ inputs.operator || (github.event.sender.login != (inputs.bot || 'gingur-bot') && github.event.sender.login || github.repository_owner) }}
@@ -140,8 +153,12 @@ jobs:
           turns: ${{ inputs.turns || '50' }}
           model: ${{ inputs.model || 'opus' }}
           issue: ${{ env.ISSUE }}
+          intent: ${{ env.INTENT }}
           operator: ${{ env.OPERATOR }}
 
+      # No action panel: approval is an explicit `approve` dispatch by the
+      # Driver/PM, not a checkbox tick. The handoff still sweeps any stale
+      # panels left on the issue and hands the issue back to the operator.
       - name: Handoff
         if: always()
         uses: gingur/devkit/actions/claude.handoff@main
@@ -150,9 +167,4 @@ jobs:
           operator: ${{ env.OPERATOR }}
           issue: ${{ env.ISSUE }}
           status: ${{ job.status }}
-          turn: Planning
-          panel: |
-            🎛️ **Your move**
-            - [ ] **Approve** — tick to accept the plan; my next turn creates the tasks
-
-            Ticking the box is the only way to approve. Any reply is discussion — it starts a revise/answer turn automatically. Prefix a comment with `[hold]` to comment without starting a turn.
+          turn: ${{ env.INTENT == 'signoff' && 'Sign-off' || (env.INTENT == 'approve' && 'Approval' || 'Planning') }}

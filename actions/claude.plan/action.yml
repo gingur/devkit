@@ -17,6 +17,10 @@ inputs:
   issue:
     description: 'Ask issue number the turn acts on'
     required: true
+  intent:
+    description: 'EM intent for this turn: plan | approve | signoff (see prompt.md). Selects which job the turn does.'
+    required: false
+    default: 'plan'
   operator:
     description: 'Human login this turn serves; empty falls back to the event sender (repo owner when the sender is the bot)'
     required: false
@@ -45,6 +49,7 @@ runs:
           Run context:
           - Repository: ${{ github.repository }}
           - Ask issue: #${{ inputs.issue }}
+          - Intent: ${{ inputs.intent }}
           - Your bot login: ${{ inputs.bot }}
           - Operator (the human this turn): ${{ inputs.operator || (github.event.sender.login != inputs.bot && github.event.sender.login || github.repository_owner) }}
           - Turn budget: ${{ inputs.turns }} agent turns (the --max-turns hard cap)

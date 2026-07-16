@@ -624,44 +624,49 @@ Leave `RUNNER` unset to stay GitHub-hosted. Tooling lives in
 ## Agent flow (gingur-bot)
 
 This repo is enrolled in the devkit agent flow: assign an issue to
-`gingur-bot` for a plan; approve via the action panel; task issues are
-implemented to draft PRs. Runbook + operator guide:
+`gingur-bot` for a plan; the PM approves by dispatching an `approve` turn,
+which creates the task issues; task issues are implemented to draft PRs.
+Runbook + operator guide:
 https://github.com/gingur/devkit#enrolling-a-repo-in-the-agent-flow and the
 claude.plan / claude.implement sections below it.
 ```
 
-## claude.plan — issue-driven planning agent
+## claude.plan — the EM turn (plan / approve / signoff)
 
-Assign an issue to the machine user (`gingur-bot`) — the hooks service turns
-that gesture into a dispatched run of this workflow — and a Claude agent takes
-one **planning turn**: it studies the ask (repo code, issue thread, the web),
-posts a plan as a comment, and hands the issue back. The first turn
-auto-enrolls the issue with the `claude-ask` label, and from then on the cycle
-is reply-driven via the hooks service
-([gingur/hooks#64](https://github.com/gingur/hooks/issues/64)):
-after each plan the bot posts an **action panel** with an **Approve**
-checkbox. Tick it to accept — the next turn creates the plan's tasks as
-sub-issues labeled `claude-task` — or just reply to discuss (any reply starts
-a revise/answer turn automatically). **Ticking Approve is the only way to
-accept a plan; comments are always discussion.** Prefix a comment with
-`[hold]` to comment without starting a turn. Every turn ends with a summary
-comment and the issue assigned back to you — on failure, a comment carries
-the run link instead. Full design rationale:
+Dispatch an EM turn on an ask issue (the hooks service turns an assignment or
+reply into a dispatched run of this workflow) and a Claude agent runs one turn.
+The turn's **`intent`** input selects its job — the Driver/PM chooses it per
+dispatch:
+
+- **`plan`** (default) — study the ask (repo code, issue thread, the web) and
+  post a plan as a comment.
+- **`approve`** — materialize the current plan into task sub-issues labeled
+  `claude-task`, and post a summary. This is the PM's approval: an explicit
+  dispatch, **not** a checkbox.
+- **`signoff`** — verify the whole objective is delivered across the plan's
+  tasks (each implemented, its PR reviewed/merged, no integration gaps) and post
+  the EM sign-off (✅ or ⛔) on the issue. This is go-live key 1; the PM's merge
+  is key 2.
+
+The first turn auto-enrolls the issue with the `claude-ask` label. From then on
+the cycle is reply-driven via the hooks service
+([gingur/hooks#64](https://github.com/gingur/hooks/issues/64)): reply to discuss
+(a trusted reply is turned into a revise `plan` turn); prefix a comment with
+`[hold]` to comment without dispatching. There is **no action panel** on plan
+turns — approval and sign-off are explicit dispatches, never a tick. Every turn
+ends with a summary comment and the issue assigned back to you — on failure, a
+comment carries the run link instead. Full design rationale:
 [design spec](https://gist.github.com/gingur/db3b2def680edfc42e93b9275497b0a9).
 
-- **Turn-taking:** you start a turn by ticking a panel checkbox or replying
-  on the issue (intake is gated server-side in the hooks service). Assigning
-  the bot still works as a fallback _gesture_ — the service turns it into a
-  dispatch — and it starts a turn but never approves a plan. The panel checkboxes are tappable
-  in the GitHub mobile app (validated on Android) and on github.com. The
-  agent never assigns anyone; the workflow assigns the issue back to you
-  unconditionally (`if: always()`), even when the run fails.
+- **Turn-taking:** turns are dispatched by the hooks service (intake gated
+  server-side) — from an assignment gesture, a trusted reply, or the Driver's
+  own approve/signoff dispatch. The agent never assigns anyone; the workflow
+  assigns the issue back to you unconditionally (`if: always()`), even when the
+  run fails.
 - **Stateless turns:** each run re-derives state from the issue (plan comment
-  present? Approve ticked? sub-issues present? operator comments since the
-  bot's last one?) and does the next right thing — propose, revise,
-  materialize, or reconcile.
-  Re-running is always safe. To skip the review gate for small asks, write
-  "no review needed, create the tasks directly" in the issue body.
+  present? sub-issues present? operator comments since the bot's last one?) and
+  does the job for its intent — propose/revise (`plan`), materialize
+  (`approve`), or judge completeness (`signoff`). Re-running is always safe.
 - **Billing:** runs authenticate with a Claude Max subscription OAuth token
   (`claude setup-token`), not API-key billing. Quota is shared with
   interactive Claude Code use; `turns` bounds the worst case per run.
@@ -686,6 +691,7 @@ calling the local reusable, and reads the identity from the
 | Input               | Default         | Notes                                                               |
 | ------------------- | --------------- | ------------------------------------------------------------------- |
 | `issue`             | —               | **required** — ask issue number the turn acts on                    |
+| `intent`            | `plan`          | EM job this turn: `plan` \| `approve` \| `signoff`                  |
 | `dispatch`          | —               | hooks-service dispatch id, surfaced in the run name for correlation |
 | `operator`          | —               | human login for handoff (empty falls back to the event sender)      |
 | `bot`               | `gingur-bot`    | machine-user login the agent runs as                                |

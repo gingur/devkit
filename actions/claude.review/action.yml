@@ -81,11 +81,7 @@ runs:
         BOT: ${{ inputs.bot }}
       shell: bash
       run: |
-        r=$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate \
-          --jq "[.[] | select(.user.login == \"$BOT\" and .submitted_at >= \"$TURN_STARTED\")] | length")
-        c=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-          --jq "[.[] | select(.user.login == \"$BOT\" and .created_at >= \"$TURN_STARTED\")] | length")
-        if [[ "$r" -eq 0 && "$c" -eq 0 ]]; then
-          echo "::error::review turn ended without posting a PR review or comment (contract: one verdict per turn)"
-          exit 1
-        fi
+        # Verdict-contract check — shared with plan/implement; the agent-identity
+        # rationale lives in claude.lib/turn.sh.
+        . "${GITHUB_ACTION_PATH}/../claude.lib/turn.sh"
+        turn_verify_review

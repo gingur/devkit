@@ -1,0 +1,43 @@
+name: Verify
+# devkit's own CI.
+#
+# Everything under actions/ ships to every enrolled repo on `@main`, so a
+# regression here lands fleet-wide the moment it merges — there is no staging
+# step between this repo and production. #147 changed the agent's comment
+# identity and false-failed every plan/implement/review turn in every repo, and
+# nothing caught it because this repo had no PR-triggered test job at all: the
+# only workflow on `pull_request` was the secret scan.
+#
+# Runs GitHub-hosted by design (devkit standards: only operator-gated triggers
+# may target the `local` self-hosted runner).
+on:
+  pull_request:
+    paths:
+      - 'actions/**'
+      - '.github/workflows/verify.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  actions:
+    name: Actions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # Catches the class of breakage that only shows up at turn time, when a
+      # composite sources a lib whose syntax never got exercised locally.
+      - name: Shell syntax
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(git ls-files 'actions/**/*.sh')
+          printf 'checking %s shell file(s)\n' "${#files[@]}"
+          for f in "${files[@]}"; do bash -n "$f"; done
+
+      # Locks the agent comment-identity contract against fixtures — no network,
+      # no token, real jq selectors. See
+      # docs/incidents/2026-07-17-turn-guard-identity.md.
+      - name: Turn contract fixtures
+        run: bash actions/claude.lib/turn.test.sh

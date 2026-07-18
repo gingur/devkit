@@ -7,7 +7,7 @@ name: Plan
 # dispatch ledger). Manual escape hatch: gh workflow run plan.yml -f issue=<n>
 # — omitting dispatch yields the legacy '#N' run-name, which the service's
 # fallback correlation still handles.
-run-name: "Plan #${{ inputs.issue }}${{ inputs.dispatch && format(' [d:{0}]', inputs.dispatch) || '' }}"
+run-name: "Plan #${{ inputs.issue }} (${{ inputs.intent }})${{ inputs.dispatch && format(' [d:{0}]', inputs.dispatch) || '' }}"
 
 on:
   workflow_dispatch:
@@ -16,6 +16,11 @@ on:
         description: 'Ask issue number the turn acts on'
         type: string
         required: true
+      intent:
+        description: 'EM intent: plan (produce/refine — never creates tasks) | approve (materialize task sub-issues) | signoff (verify delivery, post sign-off on the issue)'
+        type: string
+        required: false
+        default: 'plan'
       dispatch:
         description: 'Hooks-service dispatch id, surfaced in run-name for run correlation'
         type: string
@@ -37,6 +42,7 @@ jobs:
     uses: ./.github/workflows/claude.plan.yml
     with:
       issue: ${{ inputs.issue }}
+      intent: ${{ inputs.intent }}
       dispatch: ${{ inputs.dispatch }}
       operator: ${{ inputs.operator }}
       runner: ${{ vars.RUNNER }}

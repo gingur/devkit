@@ -136,6 +136,34 @@ so it's bumped once.
 
 ---
 
+## Agent turns: the comment-identity contract
+
+A turn writes to GitHub under **two different identities**, and anything that
+reads back what a turn wrote must account for both:
+
+| What | Identity | Why |
+| --- | --- | --- |
+| The agent's own comments (plan, summary, blocker report) | **`claude[bot]`** — the Claude GitHub App | The agent posts through the action, not through `$BOT`'s PAT |
+| Submitted PR reviews, and steps that shell out to `gh` | **`$BOT`** (`gingur-bot`) | These use `GH_BOT_PAT` directly |
+
+**Rule:** any guard, filter, or query that keys on comment author must accept
+**both** `$BOT` and `claude[bot]`. Matching only `$BOT` silently sees zero
+comments even when the agent posted correctly.
+
+This is not hypothetical. #147 retired the `github_token`-authored action panel,
+which moved the agent's comment from `gingur-bot` to `claude[bot]`. The contract
+guards still matched only `$BOT`, so **every** plan/implement/review turn
+false-failed while doing its job correctly — and the PM re-dispatched the
+"failed" turns in a loop. See
+[docs/incidents/2026-07-17-turn-guard-identity.md](./docs/incidents/2026-07-17-turn-guard-identity.md).
+
+Guards must also **emit evidence before failing** (#149): print what actually
+landed in the turn window and which authors are accepted. A contract error that
+asserts "posted nothing" without proof is worse than no check at all when the
+assertion is false.
+
+---
+
 ## Consumer standards
 
 What a consumer repo (e.g. a site deployed via devkit) must follow.

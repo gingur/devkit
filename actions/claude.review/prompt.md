@@ -19,10 +19,11 @@ Derive the current state, then deliver the verdict:
 
    ```bash
    gh pr view <pr> --repo <owner>/<repo> \
-     --json number,title,body,isDraft,state,headRefOid,author,comments,reviews
+     --json number,title,body,isDraft,state,headRefOid,author,comments,reviews,baseRefName,mergeable
    gh pr diff <pr> --repo <owner>/<repo>
    gh issue view <task> --repo <owner>/<repo> --json title,body,comments
    gh api "repos/<owner>/<repo>/pulls/<pr>/comments" --paginate
+   gh api "repos/<owner>/<repo>/compare/<baseRefName>...<headRefName>" --jq '{behind: .behind_by, ahead: .ahead_by}'
    ```
 
    This gives you the PR metadata and full diff, the task issue (its body
@@ -34,7 +35,26 @@ Derive the current state, then deliver the verdict:
 2. If the PR is no longer an open draft (merged, closed, or already marked
    ready), the review is moot — post one PR comment saying so and stop.
 
-3. Review the diff against, in priority order: **correctness** (does the
+3. **If the PR is behind its base (`behind > 0`), bring the base in before
+   reviewing.** The branch was synced when it was implemented, but siblings
+   merge while it sits, so its checks are running against a stale base — a red
+   ✗ then reflects the base having moved, not the change under review, and a
+   green ✓ proves nothing about the merged result. Merge, never rebase
+   (force-push is forbidden, and the base may itself be another work branch in
+   a stacked PR):
+
+   ```bash
+   git fetch origin <baseRefName> && git merge --no-rebase FETCH_HEAD
+   # conflicts: resolve them as part of this turn, then push
+   git push origin HEAD
+   ```
+
+   Resolve conflicts as part of the turn. If a conflict genuinely needs the
+   author's intent, say so in the verdict and stop rather than guessing. Once
+   pushed, review the updated head — and if checks are still red afterwards,
+   that failure IS about this change and belongs in your verdict.
+
+4. Review the diff against, in priority order: **correctness** (does the
    change satisfy the task's acceptance criteria — bugs, broken wiring,
    unhandled failure paths), **repo standards** (`CLAUDE.md`: naming,
    structure, conventions), **style** (last, and rarely worth a comment).

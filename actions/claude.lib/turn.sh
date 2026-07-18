@@ -37,6 +37,15 @@ turn_instructions() {
   } >> "$GITHUB_ENV"
 }
 
+# _turn_gh <api-path> <jq-filter> — the guards' only GitHub read.
+# Isolated behind one function so the contract checks can be exercised against
+# fixtures (actions/claude.lib/turn.test.sh) with no network: a test redefines
+# this after sourcing, and the real jq selectors — the part that actually broke
+# in #147 — still run verbatim.
+_turn_gh() {
+  gh api "$1" --paginate --jq "$2"
+}
+
 # turn_verify — comment-contract check for plan/implement turns. The agent's
 # contract is at least one comment per turn (its summary, or a blocker
 # report). A run that "succeeds" silently burns real quota with the operator
@@ -52,8 +61,8 @@ turn_instructions() {
 # Reads env: GH_TOKEN, REPO, ISSUE, BOT, TURN_STARTED.
 turn_verify() {
   local n
-  n=$(gh api "repos/$REPO/issues/$ISSUE/comments" --paginate \
-    --jq "[.[] | select((.user.login == \"$BOT\" or .user.login == \"claude[bot]\") and .created_at >= \"$TURN_STARTED\")] | length")
+  n=$(_turn_gh "repos/$REPO/issues/$ISSUE/comments" \
+    "[.[] | select((.user.login == \"$BOT\" or .user.login == \"claude[bot]\") and .created_at >= \"$TURN_STARTED\")] | length")
   if [[ "$n" -eq 0 ]]; then
     _turn_evidence "repos/$REPO/issues/$ISSUE/comments" .created_at
     echo "::error::agent turn ended without posting any comment (contract: at least one per turn)"
@@ -68,10 +77,8 @@ turn_verify() {
 # a valid one did — authored by a login the check did not accept.
 _turn_evidence() {
   local path="$1" field="$2" total authors
-  total=$(gh api "$path" --paginate \
-    --jq "[.[] | select($field >= \"$TURN_STARTED\")] | length" 2>/dev/null) || total="?"
-  authors=$(gh api "$path" --paginate \
-    --jq "[.[] | select($field >= \"$TURN_STARTED\") | .user.login] | unique | join(\", \")" 2>/dev/null) || authors=""
+  total=$(_turn_gh "$path" "[.[] | select($field >= \"$TURN_STARTED\")] | length" 2>/dev/null) || total="?"
+  authors=$(_turn_gh "$path" "[.[] | select($field >= \"$TURN_STARTED\") | .user.login] | unique | join(\", \")" 2>/dev/null) || authors=""
   echo "::notice::turn-contract evidence — since $TURN_STARTED: ${total} entr(ies) at $path by [${authors:-none}]; accepted authors: [$BOT, claude[bot]]"
 }
 
@@ -81,10 +88,10 @@ _turn_evidence() {
 # Reads env: GH_TOKEN, REPO, PR, BOT, TURN_STARTED.
 turn_verify_review() {
   local r c
-  r=$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate \
-    --jq "[.[] | select((.user.login == \"$BOT\" or .user.login == \"claude[bot]\") and .submitted_at >= \"$TURN_STARTED\")] | length")
-  c=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-    --jq "[.[] | select((.user.login == \"$BOT\" or .user.login == \"claude[bot]\") and .created_at >= \"$TURN_STARTED\")] | length")
+  r=$(_turn_gh "repos/$REPO/pulls/$PR/reviews" \
+    "[.[] | select((.user.login == \"$BOT\" or .user.login == \"claude[bot]\") and .submitted_at >= \"$TURN_STARTED\")] | length")
+  c=$(_turn_gh "repos/$REPO/issues/$PR/comments" \
+    "[.[] | select((.user.login == \"$BOT\" or .user.login == \"claude[bot]\") and .created_at >= \"$TURN_STARTED\")] | length")
   if [[ "$r" -eq 0 && "$c" -eq 0 ]]; then
     _turn_evidence "repos/$REPO/pulls/$PR/reviews" .submitted_at
     _turn_evidence "repos/$REPO/issues/$PR/comments" .created_at

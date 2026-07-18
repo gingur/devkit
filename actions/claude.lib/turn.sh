@@ -55,9 +55,24 @@ turn_verify() {
   n=$(gh api "repos/$REPO/issues/$ISSUE/comments" --paginate \
     --jq "[.[] | select((.user.login == \"$BOT\" or .user.login == \"claude[bot]\") and .created_at >= \"$TURN_STARTED\")] | length")
   if [[ "$n" -eq 0 ]]; then
+    _turn_evidence "repos/$REPO/issues/$ISSUE/comments" .created_at
     echo "::error::agent turn ended without posting any comment (contract: at least one per turn)"
     exit 1
   fi
+}
+
+# _turn_evidence <api-path> <timestamp-field> — print what actually landed in
+# the turn window before failing, so the run log diagnoses itself instead of
+# asserting a bare (and possibly false) "posted nothing". The #147 identity
+# flip cost hours precisely because the error claimed no comment existed while
+# a valid one did — authored by a login the check did not accept.
+_turn_evidence() {
+  local path="$1" field="$2" total authors
+  total=$(gh api "$path" --paginate \
+    --jq "[.[] | select($field >= \"$TURN_STARTED\")] | length" 2>/dev/null) || total="?"
+  authors=$(gh api "$path" --paginate \
+    --jq "[.[] | select($field >= \"$TURN_STARTED\") | .user.login] | unique | join(\", \")" 2>/dev/null) || authors=""
+  echo "::notice::turn-contract evidence — since $TURN_STARTED: ${total} entr(ies) at $path by [${authors:-none}]; accepted authors: [$BOT, claude[bot]]"
 }
 
 # turn_verify_review — verdict-contract check for the review turn: a submitted
@@ -71,6 +86,8 @@ turn_verify_review() {
   c=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
     --jq "[.[] | select((.user.login == \"$BOT\" or .user.login == \"claude[bot]\") and .created_at >= \"$TURN_STARTED\")] | length")
   if [[ "$r" -eq 0 && "$c" -eq 0 ]]; then
+    _turn_evidence "repos/$REPO/pulls/$PR/reviews" .submitted_at
+    _turn_evidence "repos/$REPO/issues/$PR/comments" .created_at
     echo "::error::review turn ended without posting a PR review or comment (contract: one verdict per turn)"
     exit 1
   fi

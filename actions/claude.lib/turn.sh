@@ -42,13 +42,36 @@ turn_instructions() {
 # report). A run that "succeeds" silently burns real quota with the operator
 # none the wiser — fail the job instead, so the handoff posts the failure
 # comment and returns the baton.
+#
+# Identity: since #147 retired the github_token-authored action panel, the
+# agent posts its turn comment as the Claude GitHub App (`claude[bot]`), not as
+# $BOT (the PAT login the run triggers on). The check accepts EITHER — matching
+# only $BOT silently false-failed every post-#147 plan turn even though a valid
+# comment was posted, which drove the PM to re-dispatch in a loop (driver#96,
+# 2026-07-17).
 # Reads env: GH_TOKEN, REPO, ISSUE, BOT, TURN_STARTED.
 turn_verify() {
   local n
   n=$(gh api "repos/$REPO/issues/$ISSUE/comments" --paginate \
-    --jq "[.[] | select(.user.login == \"$BOT\" and .created_at >= \"$TURN_STARTED\")] | length")
+    --jq "[.[] | select((.user.login == \"$BOT\" or .user.login == \"claude[bot]\") and .created_at >= \"$TURN_STARTED\")] | length")
   if [[ "$n" -eq 0 ]]; then
     echo "::error::agent turn ended without posting any comment (contract: at least one per turn)"
+    exit 1
+  fi
+}
+
+# turn_verify_review — verdict-contract check for the review turn: a submitted
+# COMMENT review OR a PR comment by the agent since the turn started. Same
+# dual-identity rule as turn_verify ($BOT or the Claude App).
+# Reads env: GH_TOKEN, REPO, PR, BOT, TURN_STARTED.
+turn_verify_review() {
+  local r c
+  r=$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate \
+    --jq "[.[] | select((.user.login == \"$BOT\" or .user.login == \"claude[bot]\") and .submitted_at >= \"$TURN_STARTED\")] | length")
+  c=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+    --jq "[.[] | select((.user.login == \"$BOT\" or .user.login == \"claude[bot]\") and .created_at >= \"$TURN_STARTED\")] | length")
+  if [[ "$r" -eq 0 && "$c" -eq 0 ]]; then
+    echo "::error::review turn ended without posting a PR review or comment (contract: one verdict per turn)"
     exit 1
   fi
 }

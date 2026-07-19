@@ -44,7 +44,10 @@ Derive the current state, then deliver the verdict:
    a stacked PR):
 
    ```bash
-   git fetch origin <baseRefName> && git merge --no-rebase FETCH_HEAD
+   # fetch + merge, never `git pull`: a `pull.rebase=true` config would
+   # silently rebase, and rewriting an already-pushed branch would need a
+   # force-push, which is forbidden.
+   git fetch origin <baseRefName> && git merge FETCH_HEAD
    # conflicts: resolve them as part of this turn, then push
    git push origin HEAD
    ```

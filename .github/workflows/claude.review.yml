@@ -146,12 +146,8 @@ jobs:
             echo "headSha=$(jq -r '.headRefOid' <<< "$pr")"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          # Review the PR head itself — findings must match the reviewed SHA.
-          ref: ${{ steps.resolve.outputs.headSha }}
-
+      # Secrets first so env.GH_BOT_PAT is available to the checkout below —
+      # same ordering as claude.implement.yml, and for the same reason.
       - name: Secrets
         uses: gingur/devkit/actions/infisical.secrets.fetch@main
         with:
@@ -159,6 +155,23 @@ jobs:
           project: ${{ inputs.infisicalProject || 'gingur' }}
           env: ${{ inputs.infisicalEnv || 'preview' }}
           path: ${{ inputs.infisicalPath || '/infra/github' }}
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # Review the PR head itself — findings must match the reviewed SHA.
+          ref: ${{ steps.resolve.outputs.headSha }}
+          # Persist the write-capable bot PAT as git's credential — NOT the
+          # read-only ephemeral GITHUB_TOKEN checkout persists by default (this
+          # job is `contents: read`). #156 gave the reviewer a base-sync that
+          # pushes, but no credential that can push: the merge succeeded and
+          # `git push` 403'd with "Write access to repository not granted",
+          # even though the PAT reports push access.
+          token: ${{ env.GH_BOT_PAT }}
+          # Full history: the base-sync merge needs the base branch's commits.
+          # A depth-1 checkout fails with "refusing to merge unrelated
+          # histories" and forces the turn to unshallow by hand.
+          fetch-depth: 0
 
       - name: Review
         uses: gingur/devkit/actions/claude.review@main

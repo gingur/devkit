@@ -6,6 +6,10 @@ inputs:
     description: 'Machine-user login the workflow triggers on (the agent identity)'
     required: false
     default: 'gingur-bot'
+  author:
+    description: "Login the agent's commits are authored as (git blame owner)"
+    required: false
+    default: 'gingur'
   turns:
     description: 'Max agent turns per run (cost bound)'
     required: false
@@ -30,12 +34,13 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ env.GH_BOT_PAT }}
-        BOT: ${{ inputs.bot }}
+        AUTHOR: ${{ inputs.author }}
       run: |
-        # Commits must be authored by the bot account (bot_id/bot_name below),
-        # not claude-code-action's github-actions default. Resolved at run
-        # time so the id can never desync from the login.
-        echo "BOT_ID=$(gh api "users/$BOT" --jq .id)" >> "$GITHUB_ENV"
+        # Commits are authored by the operator account (bot_id/bot_name below
+        # map to the author, not claude-code-action's github-actions default)
+        # and committed by the bot (GIT_COMMITTER_* in the Implement step).
+        # Resolved at run time so the id can never desync from the login.
+        echo "AUTHOR_ID=$(gh api "users/$AUTHOR" --jq .id)" >> "$GITHUB_ENV"
         # Emits AGENT_MD/TASK_MD/TURN_STARTED/CLAUDE_EXEC — rationale in claude.lib/turn.sh.
         . "${GITHUB_ACTION_PATH}/../claude.lib/turn.sh"
         turn_instructions TASK_MD
@@ -44,11 +49,13 @@ runs:
       uses: anthropics/claude-code-action@v1
       env:
         GH_TOKEN: ${{ env.GH_BOT_PAT }}
+        GIT_COMMITTER_NAME: ${{ inputs.bot }}
+        GIT_COMMITTER_EMAIL: 301771478+gingur-bot@users.noreply.github.com
       with:
         claude_code_oauth_token: ${{ env.CLAUDE_CODE_OAUTH_TOKEN }}
         github_token: ${{ env.GH_BOT_PAT }}
-        bot_id: ${{ env.BOT_ID }}
-        bot_name: ${{ inputs.bot }}
+        bot_id: ${{ env.AUTHOR_ID }}
+        bot_name: ${{ inputs.author }}
         path_to_claude_code_executable: ${{ env.CLAUDE_EXEC }}
         prompt: |
           Run context:

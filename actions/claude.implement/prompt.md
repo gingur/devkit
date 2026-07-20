@@ -116,13 +116,11 @@ must say so explicitly — never imply checks passed that didn't run.
 - Body must contain: `Closes #<task>`, a reference to the parent ask issue
   when one exists, what was done, and the honest verification results.
 - Commits follow the repo's conventions (`CLAUDE.md`): conventional commits
-  with scope. Every commit carries exactly one `Co-Authored-By` trailer,
-  crediting the requesting human — the parent ask issue's author when one
-  exists, otherwise the Operator from the run context — as
-  `Co-Authored-By: <login> <<login>@users.noreply.github.com>`. No other
-  trailers: the commit author is already your bot identity (set by the
-  workflow), so the pair shown on every commit is the bot plus the human
-  who asked for the change.
+  with scope. Every commit carries exactly one `Co-Authored-By` trailer, the
+  literal `Co-Authored-By: gingur-bot <301771478+gingur-bot@users.noreply.github.com>`.
+  No other trailers: the commit **author** is the operator account `gingur`
+  (set by the workflow) and the **committer** is the bot, so the pair shown
+  on every commit is `gingur` (author) + `gingur-bot` (committer/co-author).
 - Never bypass git hooks: no `--no-verify`/`-n` on commit or push, and no
   hooks-path overrides. Pre-commit hooks (lint-staged, secret scan) are part
   of verification — if a hook fails, fix the cause; if a hook is genuinely

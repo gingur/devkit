@@ -96,5 +96,26 @@ check "turn_verify_review rejects no review and no comment" 1 turn_verify_review
 FIXTURE=$(fixture review_stale "[$(review 'gingur-bot' "$BEFORE")]")
 check "turn_verify_review rejects a review predating TURN_STARTED" 1 turn_verify_review
 
+# --- turn_verify_committer: the committer contract --------------------------
+# Net-new guard (#163): every commit the work branch carries that main
+# doesn't must be committed by the bot account. _turn_git_committers is the
+# guard's only git read — same redefinition pattern as _turn_gh — so this
+# runs with no real git history.
+BASE="origin/main"
+COMMITTERS=""
+_turn_git_committers() { printf '%s\n' "$COMMITTERS"; }
+
+COMMITTERS=$'301771478+gingur-bot@users.noreply.github.com\n301771478+gingur-bot@users.noreply.github.com'
+check "turn_verify_committer accepts all-bot committers" 0 turn_verify_committer
+
+COMMITTERS=$'301771478+gingur-bot@users.noreply.github.com\ntroy.rhinehart@gmail.com'
+check "turn_verify_committer rejects a non-bot committer among bot commits" 1 turn_verify_committer
+
+COMMITTERS="gingur@users.noreply.github.com"
+check "turn_verify_committer rejects a lone non-bot committer" 1 turn_verify_committer
+
+COMMITTERS=""
+check "turn_verify_committer passes when the branch has no new commits" 0 turn_verify_committer
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

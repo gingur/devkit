@@ -79,8 +79,10 @@ runs:
         ISSUE: ${{ inputs.issue }}
         REPO: ${{ github.repository }}
         BOT: ${{ inputs.bot }}
+        BASE: origin/${{ github.event.repository.default_branch }}
       shell: bash
       run: |
-        # Comment-contract check — rationale in claude.lib/turn.sh.
+        # Comment-contract and committer-contract checks — rationale in claude.lib/turn.sh.
         . "${GITHUB_ACTION_PATH}/../claude.lib/turn.sh"
         turn_verify
+        turn_verify_committer

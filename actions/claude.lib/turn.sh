@@ -99,3 +99,44 @@ turn_verify_review() {
     exit 1
   fi
 }
+
+# _turn_git_committers <base> — the guard's only git read for the committer
+# check. Isolated exactly like _turn_gh, so turn.test.sh can exercise the
+# assertion logic offline by redefining this after sourcing, with no real
+# git history required.
+#
+# actions/checkout defaults to a depth-1 shallow clone, which truncates the
+# ancestry graph below the fetched commit. With the graph truncated, git
+# can't find a common ancestor between "$1" and HEAD, so "$1..HEAD" walks
+# all the way back to the branch's real fork point instead of just this
+# turn's new commits — a false failure surfaced in PR review (PR #165,
+# devkit#163): pre-existing commits by non-bot committers get misread as
+# new. Deepen to a full clone first so the range is exact.
+_turn_git_committers() {
+  if [[ "$(git rev-parse --is-shallow-repository 2>/dev/null)" == true ]]; then
+    git fetch --quiet --unshallow origin "${1#origin/}" 2>/dev/null
+  fi
+  git log --format='%ce' "$1"..HEAD
+}
+
+# turn_verify_committer — committer-identity contract: every commit the work
+# branch carries that main doesn't must be committed by the bot account, not
+# smuggled in by a human or a differently-configured run. Net-new (#163):
+# turn.sh previously had no committer check at all. The accepted email must
+# stay byte-identical to the GIT_COMMITTER_EMAIL set in the Implement step
+# (actions/claude.implement/action.yml).
+# Reads env: BASE.
+turn_verify_committer() {
+  local accepted="301771478+gingur-bot@users.noreply.github.com"
+  local committers bad="" c
+  committers=$(_turn_git_committers "$BASE")
+  while IFS= read -r c; do
+    [[ -z "$c" ]] && continue
+    [[ "$c" != "$accepted" ]] && bad+="$c"$'\n'
+  done <<<"$committers"
+  if [[ -n "$bad" ]]; then
+    echo "::notice::committer-contract evidence — committers since $BASE: [$(printf '%s\n' "$committers" | sort -u | tr '\n' ',' | sed 's/,$//')]; accepted committer: [$accepted]"
+    echo "::error::commit(s) on the work branch were committed by a non-bot identity (accepted: $accepted)"
+    exit 1
+  fi
+}

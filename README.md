@@ -467,9 +467,11 @@ list versions in CI with the `cf.worker.versions` action, or use
 
 ### Consumer workflow (copy-paste)
 
-devkit ships the rollback as a `workflow_call` reusable. Add a thin
-`workflow_dispatch` wrapper in your repo so the "Run workflow" form gives you an
-`env` dropdown and a free-text version field:
+devkit ships the rollback as a `workflow_call` reusable. It targets
+**production only** (the job hardcodes `environment: production`; there is no
+`env` input — a preview worker is disposable and gets torn down on PR close
+instead of rolled back). Add a thin `workflow_dispatch` wrapper in your repo
+so the "Run workflow" form gives you a free-text version field:
 
 ```yaml
 # .github/workflows/rollback.yml
@@ -477,11 +479,6 @@ name: Rollback
 on:
   workflow_dispatch:
     inputs:
-      env:
-        description: Target environment
-        type: choice
-        options: [production, preview]
-        default: production
       version:
         description: Cloudflare version UUID (blank = previous version)
         type: string
@@ -495,7 +492,6 @@ jobs:
   rollback:
     uses: gingur/devkit/.github/workflows/cf.worker.rollback.yml@main
     with:
-      env: ${{ inputs.env }}
       version: ${{ inputs.version }}
       infisicalProject: <your-project-slug>
       infisicalEnv: public
@@ -518,10 +514,10 @@ Two equivalent ways — both drive the same `workflow_dispatch` wrapper:
 
 - **GitHub UI** — open the wrapper's page at
   `https://github.com/<owner>/<repo>/actions/workflows/rollback.yml`, click
-  **Run workflow ▸**, pick `env`, paste the version UUID, and run. The deploy
-  comment links straight to this page. (GitHub can't deep-link to a pre-filled
-  form, so you still paste the UUID — but the form itself is fully UI-driven.)
-- **CLI** — `gh workflow run rollback.yml -f env=production -f version=<uuid>`.
+  **Run workflow ▸**, paste the version UUID, and run. The deploy comment
+  links straight to this page. (GitHub can't deep-link to a pre-filled form,
+  so you still paste the UUID — but the form itself is fully UI-driven.)
+- **CLI** — `gh workflow run rollback.yml -f version=<uuid>`.
 
 > The version-record comment builds its UI link and CLI command from the wrapper
 > filename, which it assumes is `rollback.yml`. If you name your wrapper something
@@ -696,7 +692,7 @@ calling the local reusable, and reads the identity from the
 | `operator`          | —               | human login for handoff (empty falls back to the event sender)      |
 | `bot`               | `gingur-bot`    | machine-user login the agent runs as                                |
 | `turns`             | `50`            | max agent turns per run (cost bound)                                |
-| `model`             | `fable`         | `claude --model` value (planning defaults to the top tier)          |
+| `model`             | `opus`          | `claude --model` value (planning defaults to Opus)                  |
 | `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)             |
 | `infisicalProject`  | `gingur`        | Infisical project slug                                              |
 | `infisicalEnv`      | `preview`       | Infisical environment slug                                          |
@@ -776,7 +772,7 @@ variable.
 | `operator`          | —               | human login for handoff (empty falls back to the event sender)      |
 | `bot`               | `gingur-bot`    | machine-user login the agent runs as                                |
 | `turns`             | `100`           | max agent turns per run (cost bound)                                |
-| `model`             | `fable`         | `claude --model` value (implementation defaults to the top tier)    |
+| `model`             | `sonnet`        | `claude --model` value (implementation defaults to Sonnet)          |
 | `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)             |
 | `infisicalProject`  | `gingur`        | Infisical project slug                                              |
 | `infisicalEnv`      | `preview`       | Infisical environment slug                                          |
@@ -849,7 +845,7 @@ variable.
 | `operator`          | —               | human login for handoff (empty falls back to the event sender)      |
 | `bot`               | `gingur-bot`    | machine-user login the agent runs as                                |
 | `turns`             | `50`            | max agent turns per run (cost bound)                                |
-| `model`             | `fable`         | `claude --model` value (review defaults to the top tier)            |
+| `model`             | `sonnet`        | `claude --model` value (review defaults to Sonnet)                  |
 | `infisicalIdentity` | —               | identity UUID (falls back to `vars.INFISICAL_IDENTITY`)             |
 | `infisicalProject`  | `gingur`        | Infisical project slug                                              |
 | `infisicalEnv`      | `preview`       | Infisical environment slug                                          |
@@ -876,7 +872,9 @@ fleet-wide.
 The template shape, per turn kind:
 
 - `on: workflow_dispatch` only — `issue` (`pr` for review) required;
-  `dispatch` and `operator` optional.
+  `dispatch` and `operator` optional; the plan executor additionally carries
+  `intent` (optional, default `plan`) so `approve`/`signoff` turns can be
+  dispatched.
 - `run-name` opens with the **matching kind word** (`Plan` / `Implement` /
   `Review`): the hooks ledger correlates the completing `workflow_run` by the
   `[d:<uuid>]` token in `display_title`; `#N` parsing remains only as the
@@ -889,7 +887,7 @@ The template shape, per turn kind:
 ```yaml
 # .github/workflows/plan.yml
 name: Plan
-run-name: "Plan #${{ inputs.issue }}${{ inputs.dispatch && format(' [d:{0}]', inputs.dispatch) || '' }}"
+run-name: "Plan #${{ inputs.issue }} (${{ inputs.intent }})${{ inputs.dispatch && format(' [d:{0}]', inputs.dispatch) || '' }}"
 on:
   workflow_dispatch:
     inputs:
@@ -897,6 +895,11 @@ on:
         description: 'Ask issue number the turn acts on'
         type: string
         required: true
+      intent:
+        description: 'EM intent: plan (produce/refine — never creates tasks) | approve (materialize task sub-issues) | signoff (verify delivery, post sign-off on the issue)'
+        type: string
+        required: false
+        default: 'plan'
       dispatch:
         description: 'Hooks-service dispatch id, surfaced in run-name for run correlation'
         type: string
@@ -918,6 +921,7 @@ jobs:
     uses: gingur/devkit/.github/workflows/claude.plan.yml@main
     with:
       issue: ${{ inputs.issue }}
+      intent: ${{ inputs.intent }}
       dispatch: ${{ inputs.dispatch }}
       operator: ${{ inputs.operator }}
       runner: ${{ vars.RUNNER }}

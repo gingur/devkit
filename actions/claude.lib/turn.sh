@@ -104,7 +104,18 @@ turn_verify_review() {
 # check. Isolated exactly like _turn_gh, so turn.test.sh can exercise the
 # assertion logic offline by redefining this after sourcing, with no real
 # git history required.
+#
+# actions/checkout defaults to a depth-1 shallow clone, which truncates the
+# ancestry graph below the fetched commit. With the graph truncated, git
+# can't find a common ancestor between "$1" and HEAD, so "$1..HEAD" walks
+# all the way back to the branch's real fork point instead of just this
+# turn's new commits — a false failure surfaced in PR review (PR #165,
+# devkit#163): pre-existing commits by non-bot committers get misread as
+# new. Deepen to a full clone first so the range is exact.
 _turn_git_committers() {
+  if [[ "$(git rev-parse --is-shallow-repository 2>/dev/null)" == true ]]; then
+    git fetch --quiet --unshallow origin "${1#origin/}" 2>/dev/null
+  fi
   git log --format='%ce' "$1"..HEAD
 }
 

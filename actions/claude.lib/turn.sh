@@ -99,3 +99,33 @@ turn_verify_review() {
     exit 1
   fi
 }
+
+# _turn_git_committers <base> — the guard's only git read for the committer
+# check. Isolated exactly like _turn_gh, so turn.test.sh can exercise the
+# assertion logic offline by redefining this after sourcing, with no real
+# git history required.
+_turn_git_committers() {
+  git log --format='%ce' "$1"..HEAD
+}
+
+# turn_verify_committer — committer-identity contract: every commit the work
+# branch carries that main doesn't must be committed by the bot account, not
+# smuggled in by a human or a differently-configured run. Net-new (#163):
+# turn.sh previously had no committer check at all. The accepted email must
+# stay byte-identical to the GIT_COMMITTER_EMAIL set in the Implement step
+# (actions/claude.implement/action.yml).
+# Reads env: BASE.
+turn_verify_committer() {
+  local accepted="301771478+gingur-bot@users.noreply.github.com"
+  local committers bad="" c
+  committers=$(_turn_git_committers "$BASE")
+  while IFS= read -r c; do
+    [[ -z "$c" ]] && continue
+    [[ "$c" != "$accepted" ]] && bad+="$c"$'\n'
+  done <<<"$committers"
+  if [[ -n "$bad" ]]; then
+    echo "::notice::committer-contract evidence — committers since $BASE: [$(printf '%s\n' "$committers" | sort -u | tr '\n' ',' | sed 's/,$//')]; accepted committer: [$accepted]"
+    echo "::error::commit(s) on the work branch were committed by a non-bot identity (accepted: $accepted)"
+    exit 1
+  fi
+}

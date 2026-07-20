@@ -41,3 +41,8 @@ jobs:
       # docs/incidents/2026-07-17-turn-guard-identity.md.
       - name: Turn contract fixtures
         run: bash actions/claude.lib/turn.test.sh
+
+      # Locks the secret-scoping primitive against fixtures — no network, no
+      # token. See actions/claude.lib/secrets.sh.
+      - name: Secret scoping fixtures
+        run: bash actions/claude.lib/secrets.test.sh

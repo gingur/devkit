@@ -1,0 +1,58 @@
+name: 'Scope Infisical secrets to step outputs'
+description: 'Fetch secrets from Infisical to a file, then re-emit only the requested keys as masked step outputs — so a step gets just the secrets it names instead of the whole job-wide env block infisical.secrets.fetch export: env produces. Requires id-token: write in the calling job.'
+
+inputs:
+  identity:
+    description: 'Infisical machine identity UUID with OIDC trust for this repo'
+    required: true
+  audience:
+    description: 'OIDC audience claim (must match the identity configuration)'
+    required: false
+    default: 'https://github.com/gingur'
+  project:
+    description: 'Infisical project slug (e.g., gingur)'
+    required: true
+  env:
+    description: 'Infisical environment slug (e.g., public)'
+    required: true
+  path:
+    description: 'Infisical secret folder path (e.g., /infra/github)'
+    required: true
+  keys:
+    description: 'Space-separated INFISICAL_KEY:outputName specs to re-emit as step outputs (only the declared outputs below actually surface)'
+    required: true
+
+outputs:
+  ghBotPat:
+    description: 'GH_BOT_PAT, when requested via keys'
+    value: ${{ steps.scope.outputs.ghBotPat }}
+  ghDriverPat:
+    description: 'GH_DRIVER_PAT, when requested via keys'
+    value: ${{ steps.scope.outputs.ghDriverPat }}
+  claudeToken:
+    description: 'CLAUDE_CODE_OAUTH_TOKEN, when requested via keys'
+    value: ${{ steps.scope.outputs.claudeToken }}
+  databaseUrl:
+    description: 'DATABASE_URL, when requested via keys'
+    value: ${{ steps.scope.outputs.databaseUrl }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Fetch secrets to file
+      uses: gingur/devkit/actions/infisical.secrets.fetch@main
+      with:
+        identity: ${{ inputs.identity }}
+        audience: ${{ inputs.audience }}
+        project: ${{ inputs.project }}
+        env: ${{ inputs.env }}
+        path: ${{ inputs.path }}
+        export: file
+        fileOutputPath: ${{ runner.temp }}/turn.env
+
+    - name: Scope to step outputs
+      id: scope
+      shell: bash
+      run: |
+        . "${GITHUB_ACTION_PATH}/../claude.lib/secrets.sh"
+        scope_secrets "${RUNNER_TEMP}/turn.env" ${{ inputs.keys }}

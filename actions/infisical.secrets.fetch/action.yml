@@ -1,5 +1,5 @@
 name: 'Fetch Infisical secrets'
-description: 'Fetch secrets from Infisical via GitHub OIDC and export them to the job environment. Requires id-token: write in the calling job.'
+description: 'Fetch secrets from Infisical via GitHub OIDC. Defaults to exporting them to the job environment (export: env, job-wide); set export: file to write a dotenv file at fileOutputPath instead, for callers that scope individual secrets to a single step rather than exporting job-wide. Requires id-token: write in the calling job.'
 
 inputs:
   identity:
@@ -18,6 +18,14 @@ inputs:
   path:
     description: 'Infisical secret folder path (e.g., /troyrhinehart/cloudflare)'
     required: true
+  export:
+    description: 'Export mode: env (job-wide GITHUB_ENV, default) or file (dotenv at fileOutputPath)'
+    required: false
+    default: 'env'
+  fileOutputPath:
+    description: 'Dotenv path to write when export is file'
+    required: false
+    default: '/.env'
 
 runs:
   using: 'composite'
@@ -31,4 +39,5 @@ runs:
         project-slug: ${{ inputs.project }}
         env-slug: ${{ inputs.env }}
         secret-path: ${{ inputs.path }}
-        export-type: env
+        export-type: ${{ inputs.export }}
+        file-output-path: ${{ inputs.fileOutputPath }}

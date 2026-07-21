@@ -48,10 +48,12 @@ runs:
         env: ${{ inputs.env }}
         path: ${{ inputs.path }}
         export: file
-        # Infisical/secrets-action joins file-output-path onto GITHUB_WORKSPACE,
-        # so this must be workspace-RELATIVE. An absolute path (e.g. runner.temp)
-        # gets concatenated onto the workspace and writes nowhere (ENOENT).
-        fileOutputPath: turn.env
+        # Infisical/secrets-action writes to a raw string-concat of
+        # GITHUB_WORKSPACE + file-output-path (NOT path.join). So the value must
+        # begin with "/" to yield "${GITHUB_WORKSPACE}/turn.env"; a bare
+        # "turn.env" concatenates to "…/driverturn.env" and an absolute path
+        # (e.g. runner.temp) doubles onto the workspace — both ENOENT.
+        fileOutputPath: /turn.env
 
     - name: Scope to step outputs
       id: scope

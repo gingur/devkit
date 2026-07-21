@@ -1,5 +1,5 @@
 name: 'Claude turn-end handoff'
-description: 'End an agent workflow turn: hand off to the operator (re-assign the issue from the bot), sweep action panels on success, and, on any non-success status, post a failure comment that @mentions the operator. Guarantee hierarchy: the handoff and failure comment run on github.token unconditionally, so they survive an Infisical outage; panels are best-effort — the default panel is posted with the bot PAT (GH_BOT_PAT from the job env) so the hooks service can arm it, and is skipped when the PAT is absent. Requires issues: write in the calling job.'
+description: 'End an agent workflow turn: hand off to the operator (re-assign the issue from the bot), sweep action panels on success, and, on any non-success status, post a failure comment that @mentions the operator. Guarantee hierarchy: the handoff and failure comment run on github.token unconditionally, so they survive an Infisical outage; panels are best-effort — the default panel is posted with the bot PAT (the `pat` input) so the hooks service can arm it, and is skipped when the PAT is absent. Requires issues: write in the calling job.'
 
 inputs:
   bot:
@@ -21,6 +21,10 @@ inputs:
     description: 'Markdown body for the default action-panel comment posted on success. Empty posts nothing; suppressed when the agent posted its own panel this turn.'
     required: false
     default: ''
+  pat:
+    description: 'GH_BOT_PAT, scoped to this action, for the best-effort ack cleanup / panel steps below (Unack, Panels, Retry panel). Empty skips those best-effort steps — the github.token handoff and failure comment still run.'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -40,13 +44,14 @@ runs:
     # Remove the bot's 👀 acknowledgements (added by the intake layer —
     # gingur/hooks — on the triggering comment) — the turn is over either
     # way, success or failure.
-    # Reactions belong to the bot user, so removal needs the bot PAT (from the
-    # job env, like Panels); best-effort when it's absent.
+    # Reactions belong to the bot user, so removal needs the bot PAT (the
+    # `pat` input, like Panels); best-effort when it's absent.
     - name: Unack
       env:
         ISSUE: ${{ inputs.issue }}
         REPO: ${{ github.repository }}
         BOT: ${{ inputs.bot }}
+        GH_BOT_PAT: ${{ inputs.pat }}
       shell: bash
       run: |
         [[ -z "${GH_BOT_PAT:-}" ]] && { echo 'GH_BOT_PAT absent — skipping ack cleanup'; exit 0; }
@@ -65,8 +70,8 @@ runs:
     # issue. Listing and neutralizing use github.token: PATCH keeps the original
     # author, and GITHUB_TOKEN events never trigger workflows (the hooks
     # service additionally ignores bot-sender events and bodies without
-    # "- [x] "). Posting the default panel uses GH_BOT_PAT from the job env —
-    # the panel must be bot-authored or the hooks service's panel-edit gate
+    # "- [x] "). Posting the default panel uses GH_BOT_PAT from the `pat`
+    # input — the panel must be bot-authored or the hooks service's panel-edit gate
     # can never arm it — and is best-effort:
     # no PAT (secrets fetch failed), no panel; operator replies still start
     # turns. The neutralize sweep is the mechanical backstop behind the agent's
@@ -80,6 +85,7 @@ runs:
         REPO: ${{ github.repository }}
         BOT: ${{ inputs.bot }}
         PANEL: ${{ inputs.panel }}
+        GH_BOT_PAT: ${{ inputs.pat }}
       shell: bash
       run: |
         marker='<!-- claude:action-panel -->'
@@ -149,15 +155,17 @@ runs:
 
     # The one-tap counterpart to the failure comment above — same pattern as
     # Approve. Panels must be bot-authored or the hooks service's panel-edit
-    # gate can never arm them, so this posts with GH_BOT_PAT and is best-effort: no PAT (a secrets
-    # fetch failure may be the very thing that failed the turn), no panel; the
-    # github.token comment above already carries the reply path.
+    # gate can never arm them, so this posts with GH_BOT_PAT (the `pat` input)
+    # and is best-effort: no PAT (a secrets fetch failure may be the very
+    # thing that failed the turn), no panel; the github.token comment above
+    # already carries the reply path.
     - name: Retry panel
       if: inputs.status != 'success'
       env:
         ISSUE: ${{ inputs.issue }}
         REPO: ${{ github.repository }}
         TURN: ${{ inputs.turn }}
+        GH_BOT_PAT: ${{ inputs.pat }}
       shell: bash
       run: |
         [[ -z "${GH_BOT_PAT:-}" ]] && { echo 'GH_BOT_PAT absent — skipping the retry panel; replies still start turns'; exit 0; }

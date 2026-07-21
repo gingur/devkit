@@ -139,12 +139,14 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Secrets
-        uses: gingur/devkit/actions/infisical.secrets.fetch@main
+        id: secrets
+        uses: gingur/devkit/actions/infisical.secrets.scope@main
         with:
           identity: ${{ inputs.infisicalIdentity || vars.INFISICAL_IDENTITY }}
           project: ${{ inputs.infisicalProject || 'gingur' }}
           env: ${{ inputs.infisicalEnv || 'preview' }}
           path: ${{ inputs.infisicalPath || '/infra/github' }}
+          keys: CLAUDE_CODE_OAUTH_TOKEN:claudeToken GH_BOT_PAT:ghBotPat
 
       - name: Plan
         uses: gingur/devkit/actions/claude.plan@main
@@ -155,6 +157,8 @@ jobs:
           issue: ${{ env.ISSUE }}
           intent: ${{ env.INTENT }}
           operator: ${{ env.OPERATOR }}
+          claudeToken: ${{ steps.secrets.outputs.claudeToken }}
+          ghToken: ${{ steps.secrets.outputs.ghBotPat }}
 
       # No action panel: approval is an explicit `approve` dispatch by the
       # Driver/PM, not a checkbox tick. The handoff still sweeps any stale
@@ -168,3 +172,4 @@ jobs:
           issue: ${{ env.ISSUE }}
           status: ${{ job.status }}
           turn: ${{ env.INTENT == 'signoff' && 'Sign-off' || (env.INTENT == 'approve' && 'Approval' || 'Planning') }}
+          pat: ${{ steps.secrets.outputs.ghBotPat }}

@@ -146,15 +146,18 @@ jobs:
             echo "headSha=$(jq -r '.headRefOid' <<< "$pr")"
           } >> "$GITHUB_OUTPUT"
 
-      # Secrets first so env.GH_BOT_PAT is available to the checkout below —
-      # same ordering as claude.implement.yml, and for the same reason.
+      # Secrets first so steps.secrets.outputs.ghBotPat is available to the
+      # checkout below — same ordering as claude.implement.yml, and for the
+      # same reason.
       - name: Secrets
-        uses: gingur/devkit/actions/infisical.secrets.fetch@main
+        id: secrets
+        uses: gingur/devkit/actions/infisical.secrets.scope@main
         with:
           identity: ${{ inputs.infisicalIdentity || vars.INFISICAL_IDENTITY }}
           project: ${{ inputs.infisicalProject || 'gingur' }}
           env: ${{ inputs.infisicalEnv || 'preview' }}
           path: ${{ inputs.infisicalPath || '/infra/github' }}
+          keys: GH_BOT_PAT:ghBotPat CLAUDE_CODE_OAUTH_TOKEN:claudeToken
 
       - name: Checkout
         uses: actions/checkout@v6
@@ -167,7 +170,7 @@ jobs:
           # pushes, but no credential that can push: the merge succeeded and
           # `git push` 403'd with "Write access to repository not granted",
           # even though the PAT reports push access.
-          token: ${{ env.GH_BOT_PAT }}
+          token: ${{ steps.secrets.outputs.ghBotPat }}
           # Full history: the base-sync merge needs the base branch's commits.
           # A depth-1 checkout fails with "refusing to merge unrelated
           # histories" and forces the turn to unshallow by hand.
@@ -183,6 +186,8 @@ jobs:
           headRef: ${{ steps.resolve.outputs.headRef }}
           headSha: ${{ steps.resolve.outputs.headSha }}
           operator: ${{ env.OPERATOR }}
+          claudeToken: ${{ steps.secrets.outputs.claudeToken }}
+          ghToken: ${{ steps.secrets.outputs.ghBotPat }}
 
       - name: Handoff
         if: always()
@@ -195,3 +200,4 @@ jobs:
           status: ${{ job.status }}
           turn: Review
           # No panel: action panels live on ask/task issues only.
+          pat: ${{ steps.secrets.outputs.ghBotPat }}

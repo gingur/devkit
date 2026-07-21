@@ -15,6 +15,7 @@ on:
     paths:
       - 'actions/**'
       - '.github/workflows/verify.yml'
+      - '.github/workflows/claude.*.yml'
 
 permissions:
   contents: read
@@ -46,3 +47,55 @@ jobs:
       # token. See actions/claude.lib/secrets.sh.
       - name: Secret scoping fixtures
         run: bash actions/claude.lib/secrets.test.sh
+
+      # Static guard against job-wide secret exposure in agent-turn
+      # workflows/composites — the class of bug behind devkit#168 (an
+      # implement turn ran `env | grep database_url` and printed a live
+      # DATABASE_URL into the Actions log because the turn's Secrets step
+      # exported job-wide via GITHUB_ENV). Same evidence-before-failing
+      # discipline as turn.sh: print what was found, then fail.
+      - name: Secret hygiene
+        run: |
+          set -uo pipefail
+          mapfile -t files < <(git ls-files '.github/workflows/claude.*.yml' 'actions/claude.*/action.yml')
+          printf 'checking %s turn file(s):\n' "${#files[@]}"
+          printf '  %s\n' "${files[@]}"
+
+          fail=0
+          report() { # <label> <grep output>
+            echo
+            echo "::error::$1"
+            printf '%s\n' "$2"
+            fail=1
+          }
+
+          hits=$(grep -nE 'export-type:\s*env|export:\s*env' "${files[@]}" || true)
+          [[ -n "$hits" ]] && report "job-wide secret export found (use infisical.secrets.scope, not export: env)" "$hits"
+
+          # infisical.secrets.fetch's own export input defaults to 'env' when
+          # omitted, so a bare `uses: …infisical.secrets.fetch@…` with no
+          # explicit `export:` key trips none of the checks above — the exact
+          # shape of the pre-#168 vulnerable step. infisical.secrets.scope is
+          # the only sanctioned entry point for these files; ban the other one
+          # outright rather than trying to distinguish safe vs. unsafe calls.
+          hits=$(grep -nE 'infisical\.secrets\.fetch' "${files[@]}" || true)
+          [[ -n "$hits" ]] && report "infisical.secrets.fetch used directly (turn files must use infisical.secrets.scope, which defaults to file-scoped export)" "$hits"
+
+          hits=$(grep -nE 'GITHUB_ENV' "${files[@]}" | grep -E 'GH_BOT_PAT|GH_DRIVER_PAT|CLAUDE_CODE_OAUTH_TOKEN|DATABASE_URL' || true)
+          [[ -n "$hits" ]] && report "a known secret name is written to \$GITHUB_ENV (secrets must stay step-scoped)" "$hits"
+
+          # The PR's own acceptance criterion: no turn file may read a secret
+          # back out of job-wide env after the scope-per-step rewrite.
+          hits=$(grep -nE '\$\{\{\s*env\.(GH_BOT_PAT|GH_DRIVER_PAT|CLAUDE_CODE_OAUTH_TOKEN|DATABASE_URL)\s*\}\}' "${files[@]}" || true)
+          [[ -n "$hits" ]] && report "a turn file reads a secret from job-wide \${{ env.* }} (secrets must be threaded via step outputs/inputs)" "$hits"
+
+          hits=$(grep -lE 'DATABASE_URL|databaseUrl' "${files[@]}" | grep -v 'reconcile' || true)
+          [[ -n "$hits" ]] && report "DATABASE_URL/databaseUrl referenced outside claude.reconcile (only the reconcile turn does DB work)" "$hits"
+
+          hits=$(grep -nE '(^|[^./$A-Za-z0-9_-])(env|printenv)(\s|$)|set -x' "${files[@]}" | grep -vE ':[0-9]+:\s*#' || true)
+          [[ -n "$hits" ]] && report "a bare env/printenv invocation or 'set -x' found (can dump secrets into the Actions log)" "$hits"
+
+          if [[ "$fail" -eq 0 ]]; then
+            echo "secret hygiene: clean — no job-wide export, no infisical.secrets.fetch, no \${{ env.* }} secret read, no secret written to \$GITHUB_ENV, no stray DATABASE_URL, no bare env/printenv/set -x"
+          fi
+          exit "$fail"

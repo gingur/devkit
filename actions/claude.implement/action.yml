@@ -1,11 +1,17 @@
 name: 'Claude implementation turn'
-description: 'One implementation turn on a claude-task issue: reconcile state, implement on the work branch, verify, open or update a draft PR. Requires CLAUDE_CODE_OAUTH_TOKEN and GH_BOT_PAT in env (use infisical.secrets.fetch first). Billed to the Claude Max subscription.'
+description: 'One implementation turn on a claude-task issue: reconcile state, implement on the work branch, verify, open or update a draft PR. Requires claudeToken and ghToken inputs (use infisical.secrets.scope first). Billed to the Claude Max subscription.'
 
 inputs:
   bot:
     description: 'Machine-user login the workflow triggers on (the agent identity)'
     required: false
     default: 'gingur-bot'
+  claudeToken:
+    description: 'CLAUDE_CODE_OAUTH_TOKEN, scoped to this step'
+    required: true
+  ghToken:
+    description: 'GH_BOT_PAT, scoped to the steps that need it'
+    required: true
   author:
     description: "Login the agent's commits are authored as (git blame owner)"
     required: false
@@ -33,7 +39,7 @@ runs:
       id: instructions
       shell: bash
       env:
-        GH_TOKEN: ${{ env.GH_BOT_PAT }}
+        GH_TOKEN: ${{ inputs.ghToken }}
         AUTHOR: ${{ inputs.author }}
       run: |
         # Commits are authored by the operator account (bot_id/bot_name below
@@ -48,12 +54,12 @@ runs:
     - name: Implement
       uses: anthropics/claude-code-action@v1
       env:
-        GH_TOKEN: ${{ env.GH_BOT_PAT }}
+        GH_TOKEN: ${{ inputs.ghToken }}
         GIT_COMMITTER_NAME: ${{ inputs.bot }}
         GIT_COMMITTER_EMAIL: 301771478+gingur-bot@users.noreply.github.com
       with:
-        claude_code_oauth_token: ${{ env.CLAUDE_CODE_OAUTH_TOKEN }}
-        github_token: ${{ env.GH_BOT_PAT }}
+        claude_code_oauth_token: ${{ inputs.claudeToken }}
+        github_token: ${{ inputs.ghToken }}
         bot_id: ${{ env.AUTHOR_ID }}
         bot_name: ${{ inputs.author }}
         path_to_claude_code_executable: ${{ env.CLAUDE_EXEC }}

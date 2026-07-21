@@ -1,11 +1,17 @@
 name: 'Claude review turn'
-description: 'One review turn on a bot-authored draft PR: reconcile PR + task state, review the diff against the task acceptance criteria and repo standards, then submit exactly one COMMENT review: blocking findings (PR stays draft) or an LGTM pass (then mark the PR ready and request the operator review). Requires CLAUDE_CODE_OAUTH_TOKEN and GH_BOT_PAT in env (use infisical.secrets.fetch first). Billed to the Claude Max subscription.'
+description: 'One review turn on a bot-authored draft PR: reconcile PR + task state, review the diff against the task acceptance criteria and repo standards, then submit exactly one COMMENT review: blocking findings (PR stays draft) or an LGTM pass (then mark the PR ready and request the operator review). Requires claudeToken and ghToken inputs (use infisical.secrets.scope first). Billed to the Claude Max subscription.'
 
 inputs:
   bot:
     description: 'Machine-user login the workflow triggers on (the agent identity)'
     required: false
     default: 'gingur-bot'
+  claudeToken:
+    description: 'CLAUDE_CODE_OAUTH_TOKEN, scoped to this step'
+    required: true
+  ghToken:
+    description: 'GH_BOT_PAT, scoped to this step'
+    required: true
   turns:
     description: 'Max agent turns per run (cost bound)'
     required: false
@@ -47,10 +53,10 @@ runs:
     - name: Review
       uses: anthropics/claude-code-action@v1
       env:
-        GH_TOKEN: ${{ env.GH_BOT_PAT }}
+        GH_TOKEN: ${{ inputs.ghToken }}
       with:
-        claude_code_oauth_token: ${{ env.CLAUDE_CODE_OAUTH_TOKEN }}
-        github_token: ${{ env.GH_BOT_PAT }}
+        claude_code_oauth_token: ${{ inputs.claudeToken }}
+        github_token: ${{ inputs.ghToken }}
         path_to_claude_code_executable: ${{ env.CLAUDE_EXEC }}
         prompt: |
           Run context:

@@ -72,8 +72,22 @@ jobs:
           hits=$(grep -nE 'export-type:\s*env|export:\s*env' "${files[@]}" || true)
           [[ -n "$hits" ]] && report "job-wide secret export found (use infisical.secrets.scope, not export: env)" "$hits"
 
+          # infisical.secrets.fetch's own export input defaults to 'env' when
+          # omitted, so a bare `uses: …infisical.secrets.fetch@…` with no
+          # explicit `export:` key trips none of the checks above — the exact
+          # shape of the pre-#168 vulnerable step. infisical.secrets.scope is
+          # the only sanctioned entry point for these files; ban the other one
+          # outright rather than trying to distinguish safe vs. unsafe calls.
+          hits=$(grep -nE 'infisical\.secrets\.fetch' "${files[@]}" || true)
+          [[ -n "$hits" ]] && report "infisical.secrets.fetch used directly (turn files must use infisical.secrets.scope, which defaults to file-scoped export)" "$hits"
+
           hits=$(grep -nE 'GITHUB_ENV' "${files[@]}" | grep -E 'GH_BOT_PAT|GH_DRIVER_PAT|CLAUDE_CODE_OAUTH_TOKEN|DATABASE_URL' || true)
           [[ -n "$hits" ]] && report "a known secret name is written to \$GITHUB_ENV (secrets must stay step-scoped)" "$hits"
+
+          # The PR's own acceptance criterion: no turn file may read a secret
+          # back out of job-wide env after the scope-per-step rewrite.
+          hits=$(grep -nE '\$\{\{\s*env\.(GH_BOT_PAT|GH_DRIVER_PAT|CLAUDE_CODE_OAUTH_TOKEN|DATABASE_URL)\s*\}\}' "${files[@]}" || true)
+          [[ -n "$hits" ]] && report "a turn file reads a secret from job-wide \${{ env.* }} (secrets must be threaded via step outputs/inputs)" "$hits"
 
           hits=$(grep -lE 'DATABASE_URL|databaseUrl' "${files[@]}" | grep -v 'reconcile' || true)
           [[ -n "$hits" ]] && report "DATABASE_URL/databaseUrl referenced outside claude.reconcile (only the reconcile turn does DB work)" "$hits"
@@ -82,6 +96,6 @@ jobs:
           [[ -n "$hits" ]] && report "a bare env/printenv invocation or 'set -x' found (can dump secrets into the Actions log)" "$hits"
 
           if [[ "$fail" -eq 0 ]]; then
-            echo "secret hygiene: clean — no job-wide export, no secret written to \$GITHUB_ENV, no stray DATABASE_URL, no bare env/printenv/set -x"
+            echo "secret hygiene: clean — no job-wide export, no infisical.secrets.fetch, no \${{ env.* }} secret read, no secret written to \$GITHUB_ENV, no stray DATABASE_URL, no bare env/printenv/set -x"
           fi
           exit "$fail"

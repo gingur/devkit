@@ -48,11 +48,19 @@ runs:
         env: ${{ inputs.env }}
         path: ${{ inputs.path }}
         export: file
-        fileOutputPath: ${{ runner.temp }}/turn.env
+        # Infisical/secrets-action joins file-output-path onto GITHUB_WORKSPACE,
+        # so this must be workspace-RELATIVE. An absolute path (e.g. runner.temp)
+        # gets concatenated onto the workspace and writes nowhere (ENOENT).
+        fileOutputPath: turn.env
 
     - name: Scope to step outputs
       id: scope
       shell: bash
       run: |
         . "${GITHUB_ACTION_PATH}/../claude.lib/secrets.sh"
-        scope_secrets "${RUNNER_TEMP}/turn.env" ${{ inputs.keys }}
+        # turn.env is written workspace-relative (see Fetch step); read it there
+        # and delete it immediately so no dotenv with credentials lingers in the
+        # checkout for a later step (or the agent turn) to pick up.
+        turn_env="${GITHUB_WORKSPACE}/turn.env"
+        trap 'rm -f "$turn_env"' EXIT
+        scope_secrets "$turn_env" ${{ inputs.keys }}

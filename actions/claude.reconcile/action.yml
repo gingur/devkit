@@ -1,11 +1,20 @@
 name: 'Claude reconcile turn'
-description: 'One shadow reconcile turn over the driver fleet: read the driver_inbox past the driver cursor plus the driver_actions ledger and ground truth, then act per the checked-out driver repo policy.md. Run-mode is shadow (execute:false) — zero real GitHub/side-effecting actions. Requires CLAUDE_CODE_OAUTH_TOKEN, GH_DRIVER_PAT, and DATABASE_URL in env (use infisical.secrets.fetch first). A gh-guard PreToolUse hook denies raw `gh` mutations typed into a Bash tool call — belt-and-suspenders behind shadow mode (gingur/devkit#136). Billed to the Claude Max subscription.'
+description: 'One shadow reconcile turn over the driver fleet: read the driver_inbox past the driver cursor plus the driver_actions ledger and ground truth, then act per the checked-out driver repo policy.md. Run-mode is shadow (execute:false) — zero real GitHub/side-effecting actions. Requires claudeToken, ghDriverToken, and databaseUrl inputs (use infisical.secrets.scope first). A gh-guard PreToolUse hook denies raw `gh` mutations typed into a Bash tool call — belt-and-suspenders behind shadow mode (gingur/devkit#136). Billed to the Claude Max subscription.'
 
 inputs:
   bot:
     description: 'Machine-user login the agent runs as (the agent identity)'
     required: false
     default: 'gingur-bot'
+  claudeToken:
+    description: 'CLAUDE_CODE_OAUTH_TOKEN, scoped to this step'
+    required: true
+  ghDriverToken:
+    description: 'GH_DRIVER_PAT, scoped to this step'
+    required: true
+  databaseUrl:
+    description: 'DATABASE_URL, scoped to this step'
+    required: true
   turns:
     description: 'Max agent turns per run (cost bound)'
     required: false
@@ -65,12 +74,12 @@ runs:
     - name: Reconcile
       uses: anthropics/claude-code-action@v1
       env:
-        GH_TOKEN: ${{ env.GH_DRIVER_PAT }}
-        DATABASE_URL: ${{ env.DATABASE_URL }}
+        GH_TOKEN: ${{ inputs.ghDriverToken }}
+        DATABASE_URL: ${{ inputs.databaseUrl }}
         HOME: ${{ runner.temp }}/reconcile-home
       with:
-        claude_code_oauth_token: ${{ env.CLAUDE_CODE_OAUTH_TOKEN }}
-        github_token: ${{ env.GH_DRIVER_PAT }}
+        claude_code_oauth_token: ${{ inputs.claudeToken }}
+        github_token: ${{ inputs.ghDriverToken }}
         path_to_claude_code_executable: ${{ env.CLAUDE_EXEC }}
         prompt: ${{ env.PROMPT_MD }}
         settings: ${{ env.CLAUDE_SETTINGS }}

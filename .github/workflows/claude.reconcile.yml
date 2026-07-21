@@ -95,16 +95,18 @@ jobs:
     runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
-      # Secrets first so env.GH_DRIVER_PAT is available to the checkout
-      # below. The caller (gingur/driver's thin dispatcher) supplies the
-      # Infisical path where driver fleet creds live.
+      # Secrets first so steps.secrets.outputs.ghDriverPat is available to
+      # the checkout below. The caller (gingur/driver's thin dispatcher)
+      # supplies the Infisical path where driver fleet creds live.
       - name: Secrets
-        uses: gingur/devkit/actions/infisical.secrets.fetch@main
+        id: secrets
+        uses: gingur/devkit/actions/infisical.secrets.scope@main
         with:
           identity: ${{ inputs.infisicalIdentity || vars.INFISICAL_IDENTITY }}
           project: ${{ inputs.infisicalProject || 'gingur' }}
           env: ${{ inputs.infisicalEnv }}
           path: ${{ inputs.infisicalPath }}
+          keys: GH_DRIVER_PAT:ghDriverPat CLAUDE_CODE_OAUTH_TOKEN:claudeToken DATABASE_URL:databaseUrl
 
       - name: Checkout
         uses: actions/checkout@v6
@@ -113,7 +115,7 @@ jobs:
           # skills/, and policy.md govern the reconcile turn, and the
           # working directory is what Claude Code auto-loads context from.
           repository: gingur/driver
-          token: ${{ env.GH_DRIVER_PAT }}
+          token: ${{ steps.secrets.outputs.ghDriverPat }}
 
       - name: Reconcile
         uses: gingur/devkit/actions/claude.reconcile@main
@@ -122,3 +124,6 @@ jobs:
           turns: ${{ inputs.turns || '100' }}
           model: ${{ inputs.model || 'opus' }}
           operator: ${{ inputs.operator || (github.event.sender.login != (inputs.bot || 'gingur-bot') && github.event.sender.login || github.repository_owner) }}
+          claudeToken: ${{ steps.secrets.outputs.claudeToken }}
+          ghDriverToken: ${{ steps.secrets.outputs.ghDriverPat }}
+          databaseUrl: ${{ steps.secrets.outputs.databaseUrl }}

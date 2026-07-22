@@ -73,9 +73,9 @@ jobs:
         shell: bash
         run: |
           case "${{ inputs.env }}" in
-            production|preview) ;;
+            public|preview) ;;
             *)
-              echo "::error::environment must be one of: production, preview (got: '${{ inputs.env }}')"
+              echo "::error::environment must be one of: public, preview (got: '${{ inputs.env }}')"
               exit 1
               ;;
           esac
@@ -117,12 +117,12 @@ jobs:
           token: ${{ env.CF_API_TOKEN }}
           account: ${{ env.CF_ACCOUNT_ID }}
 
-      # On a production push (squash-merged PR), record the deployed version on the
+      # On a public push (squash-merged PR), record the deployed version on the
       # source PR so it doubles as a rollback index. Skipped for preview deploys
       # (event_name == pull_request) and direct pushes with no associated PR.
       - name: Resolve source PR
         id: pr
-        if: ${{ github.event_name == 'push' && inputs.env == 'production' && steps.deploy.outputs.versionId != '' }}
+        if: ${{ github.event_name == 'push' && inputs.env == 'public' && steps.deploy.outputs.versionId != '' }}
         uses: actions/github-script@v7
         with:
           script: |

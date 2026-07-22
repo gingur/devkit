@@ -47,7 +47,7 @@ permissions:
 jobs:
   rollback:
     runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
-    environment: production
+    environment: public
     steps:
       - uses: actions/checkout@v6
 
@@ -64,7 +64,7 @@ jobs:
         uses: gingur/devkit/actions/cf.worker.rollback@main
         with:
           cwd: ${{ inputs.cwd }}
-          env: production
+          env: public
           worker: ${{ inputs.worker }}
           version: ${{ inputs.version }}
           token: ${{ env.CF_API_TOKEN }}

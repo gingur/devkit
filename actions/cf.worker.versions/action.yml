@@ -37,6 +37,6 @@ runs:
       env:
         ENV: ${{ inputs.env }}
       run: |
-        target="${ENV:-production}"
+        target="${ENV:-public}"
         echo "To roll back, dispatch the rollback workflow with a version ID from the list above:"
         echo "  gh workflow run cf.worker.rollback.yml -f env=${target} -f version=<id>"

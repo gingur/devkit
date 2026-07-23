@@ -32,6 +32,14 @@ scope_secrets() {
     key="${line%%=*}"
     value="${line#*=}"
     [[ -n "$key" ]] || continue
+    # Infisical/secrets-action's `export: file` writes dotenv values wrapped in
+    # single quotes (GH_BOT_PAT='ghp_…'); strip a matched surrounding quote pair
+    # so consumers get the raw secret, not a 2-char-longer invalid string that
+    # fails auth as a checkout/gh token.
+    case "$value" in
+      \'*\') value="${value#\'}"; value="${value%\'}" ;;
+      \"*\") value="${value#\"}"; value="${value%\"}" ;;
+    esac
     echo "::add-mask::${value}"
     if [[ -n "${wanted[$key]+x}" ]]; then
       echo "${wanted[$key]}=${value}" >> "$GITHUB_OUTPUT"

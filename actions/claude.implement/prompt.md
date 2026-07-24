@@ -19,12 +19,34 @@ Derive the current state, then do the single next right thing:
    gh issue view <task> --repo <owner>/<repo> \
      --json number,title,body,author,assignees,labels,comments
    gh api repos/<owner>/<repo>/issues/<task> --jq '.parent // empty'
+   pr=$(gh pr list --repo <owner>/<repo> --head claude/task-<task> --state all \
+     --json number,url,isDraft,state --jq '.[0].number // empty')
    gh pr list --repo <owner>/<repo> --head claude/task-<task> --state all \
      --json number,url,isDraft,state
+   if [ -n "$pr" ]; then
+     gh api repos/<owner>/<repo>/pulls/"$pr"/reviews
+     # REST has no thread-resolution field; GraphQL is the only source for isResolved.
+     gh api graphql -f query='
+       query($owner:String!,$repo:String!,$pr:Int!){
+         repository(owner:$owner,name:$repo){
+           pullRequest(number:$pr){
+             reviewThreads(first:100){
+               nodes{
+                 isResolved
+                 comments(first:100){
+                   nodes{ databaseId path line body author{login} }
+                 }
+               }
+             }
+           }
+         }
+       }' -f owner=<owner> -f repo=<repo> -F pr="$pr"
+   fi
    ```
 
    This gives you the task body, every comment, the parent ask issue (absent
-   is fine — tolerate it), and any existing PR for the work branch. Query
+   is fine — tolerate it), any existing PR for the work branch, and — when a
+   PR exists — its reviews and review threads with resolution state. Query
    deeper (parent-ask body, linked issues, repo code) where the work needs it.
 
 2. From the comments, identify your own previous ones (authored by the bot
@@ -37,6 +59,16 @@ Derive the current state, then do the single next right thing:
    question. Multiple ticks on a choose-one menu are ambiguous — ask again
    with a fresh panel. A tick on an already-consumed panel (marker
    `<!-- claude:action-panel:done -->`) is stale — ignore it.
+
+   A review thread is a work item too, on the same footing as a newer
+   operator comment: **an unresolved thread (`isResolved: false`) whose last
+   comment is not your own** (compare the tail of `comments[].author.login`
+   against the bot login — a thread you already replied to last is
+   addressed, even while still unresolved). Newer operator comments and
+   outstanding review threads are swept **together**, regardless of which one
+   triggered this turn — stateless reconciliation means one turn addresses
+   everything outstanding.
+
 3. Choose exactly one branch:
 
 - **No work branch or PR exists yet** → fresh turn. Study the task body, its
@@ -44,14 +76,31 @@ Derive the current state, then do the single next right thing:
   Implement the task on the work branch, verify (below), commit and push,
   open a **draft** pull request, and end with one summary comment on the task
   issue linking the PR.
-- **Branch/PR exists and the operator's newest comments request changes** →
-  follow-up turn. Check out the existing work branch and, before any work,
-  merge in the latest PR base branch (`git pull origin <base> --no-rebase` —
-  merge, never rebase: force-push is forbidden, and the base may itself be
-  another work branch in a stacked PR). Resolve conflicts as part of the
-  turn. Then apply the feedback, verify, and push additional commits to the
-  same branch — the same PR updates. Apply feedback surgically — do not
-  refactor unrelated code in a follow-up turn. Summary comment as always.
+- **Branch/PR exists and there are newer operator comments and/or
+  outstanding review threads** → follow-up turn. Check out the existing work
+  branch and, before any work, merge in the latest PR base branch
+  (`git pull origin <base> --no-rebase` — merge, never rebase: force-push is
+  forbidden, and the base may itself be another work branch in a stacked
+  PR). Resolve conflicts as part of the turn.
+
+  For each outstanding review thread, evaluate before acting — the reviewer
+  may be wrong. Then do exactly one of the two, never leave a thread
+  untouched:
+  - **Fix**: change the code, then reply in-thread:
+    `gh api repos/<owner>/<repo>/pulls/<pr>/comments -F in_reply_to=<databaseId> -f body="fixed in <sha>"`.
+  - **Decline**: reply in-thread with concrete technical reasoning for why
+    the code stays as-is.
+
+  Never resolve a thread (resolution belongs to the reviewer/operator, not
+  you) and never dismiss a review. When an operator comment and a reviewer
+  comment conflict, the operator wins.
+
+  Apply operator feedback and thread fixes surgically — do not refactor
+  unrelated code in a follow-up turn. Verify, then push additional commits to
+  the same branch — the same PR updates. Summary comment as always, and when
+  review threads were in play, include a per-thread disposition (fixed
+  `<sha>` / declined + why) alongside what else was pushed.
+
 - **The task is ambiguous or its acceptance criteria cannot be met as
   written** → do not guess and do not push speculative code. Post a comment
   asking the specific question that unblocks you (or stating exactly which

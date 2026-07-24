@@ -122,7 +122,7 @@ materialize.
 - Create one issue per proposed task with `gh issue create` — title from the
   plan, body **verbatim** from the plan (as amended), label `claude-task`
   (create the label first if it doesn't exist: `gh label create claude-task
-  --description "agent-implementable task" --color 5319e7`, ignore
+--description "agent-implementable task" --color 5319e7`, ignore
   already-exists errors).
 - Link each as a sub-issue of the ask issue: fetch the new issue's database id
   (`gh api repos/{owner}/{repo}/issues/<n> --jq .id`), then
@@ -147,14 +147,23 @@ the whole objective is delivered — not merely that each PR is individually fin
   whether it is implemented and its PR reviewed/merged: find its pull request
   (the implement turn opens a draft PR on branch `claude/task-<n>` containing
   `Closes #<n>`, so `gh pr list --repo <owner>/<repo> --head claude/task-<n>
-  --state all --json number,state,isDraft,reviewDecision,mergedAt` locates it),
-  and read its state — merged, or ready-for-review after a clean review pass, is
-  done; still-draft or with unresolved blocking review is not.
+--state all --json number,state,isDraft,reviewDecision,mergedAt,mergeable,mergeStateStatus`
+  locates it), and read its state — merged, or ready-for-review after a clean
+  review pass, is done; still-draft or with unresolved blocking review is not.
+- **The mergeability gate:** a task PR counts as done only when it is either
+  already `merged`, or ready-for-review after a clean review pass **and**
+  mergeable — mergeable meaning `mergeable == "MERGEABLE"` **and**
+  `mergeStateStatus == "CLEAN"` (a merged PR's `mergeStateStatus` isn't
+  meaningful, so `merged` alone satisfies the gate). Any unmerged task PR whose
+  `mergeStateStatus` is `DIRTY`, `CONFLICTING`, `BLOCKED`, `BEHIND`,
+  `UNSTABLE`, or `UNKNOWN` — or whose `mergeable` is `CONFLICTING` or
+  `UNKNOWN` — fails the gate. You must refuse a "delivered" verdict if any
+  task PR fails this gate: an unmerged PR is never, on its own, delivered.
 - Then judge the **objective as a whole**: are all tasks accounted for; do the
-  merged/ready PRs together satisfy the ask's acceptance criteria; are there
-  integration gaps, a missing task, or criteria in the ask that no task covers?
-  A set of individually-passing PRs can still leave the objective undelivered —
-  catch that.
+  merged/ready-and-mergeable PRs together satisfy the ask's acceptance
+  criteria; are there integration gaps, a missing task, or criteria in the ask
+  that no task covers? A set of individually-passing PRs can still leave the
+  objective undelivered — catch that.
 - Post the EM sign-off comment on the ask issue, one of:
 
   ```
@@ -171,6 +180,13 @@ the whole objective is delivered — not merely that each PR is individually fin
   **Gaps:**
   - <each concrete gap: unmerged/blocked task, missing coverage, integration hole>
   ```
+
+  When a task PR fails the mergeability gate, name the concrete remediation in
+  the Gaps list rather than a generic "unmerged" note: a `DIRTY`,
+  `CONFLICTING`, or `BEHIND` PR routes to rebase; a `BLOCKED`/review-blocked or
+  still-draft PR routes to finishing review or re-implementing. A
+  `mergeStateStatus` of `UNKNOWN` (GitHub still computing the merge state) is
+  treated as not-yet, never as delivered.
 
 - Sign-off is a verdict only: do not merge, mark anything ready, or create/close
   issues in this intent. The PM merges (the second go-live key) once your

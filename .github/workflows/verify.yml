@@ -143,3 +143,49 @@ jobs:
             echo "sign-off mergeability gate: clean — prompt reads mergeable/mergeStateStatus and refuses a delivered verdict on gate failure"
           fi
           exit "$fail"
+
+      # Static guard that the planner prompt actually teaches a planning
+      # method and mandates TDD per task — the class of bug behind
+      # devkit#180 (a plan satisfied the output format and quality-bar prose
+      # while giving the planner no method for how to think, and no TDD
+      # requirement, letting a weak plan through to a false "delivered"
+      # sign-off). Same evidence-before-failing discipline as the steps above.
+      - name: Planner method mandate
+        run: |
+          set -uo pipefail
+          file=actions/claude.plan/prompt.md
+          echo "checking $file"
+
+          fail=0
+          report() { # <label> <grep output>
+            echo
+            echo "::error::$1"
+            printf '%s\n' "$2"
+            fail=1
+          }
+
+          hits=$(grep -n '^### Planning method' "$file" || true)
+          if [[ -z "$hits" ]]; then
+            report "planner prompt has no '### Planning method' section" "(no match in $file)"
+          else
+            printf '%s\n' "$hits"
+          fi
+
+          hits=$(grep -n 'TDD' "$file" || true)
+          if [[ -z "$hits" ]]; then
+            report "planner prompt does not mention TDD" "(no match in $file)"
+          else
+            printf '%s\n' "$hits"
+          fi
+
+          hits=$(grep -inE 'test\(s\)? to write first' "$file" || true)
+          if [[ -z "$hits" ]]; then
+            report "planner prompt does not require 'test(s) to write first' per task" "(no match in $file)"
+          else
+            printf '%s\n' "$hits"
+          fi
+
+          if [[ "$fail" -eq 0 ]]; then
+            echo "planner method mandate: clean — prompt has a Planning method section and requires TDD test(s) to write first per task"
+          fi
+          exit "$fail"

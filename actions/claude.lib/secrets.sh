@@ -14,12 +14,19 @@
 # regardless of whether it was requested, so an unscoped secret never lands
 # unmasked in the log. For each requested SPEC whose key is present, appends
 # outputName=value to $GITHUB_OUTPUT. Removes the dotenv file when done.
+#
+# If any requested key is absent (including the empty/missing-file case),
+# emits a single ::error:: line naming the absent keys and the found/requested
+# count, then returns non-zero — an absent/empty fetch must fail loudly, not
+# hand callers an empty credential. The error line never contains a fetched
+# value; masking above already covers everything present in the file.
 scope_secrets() {
   local dotenv="$1"
   shift
 
   local spec key_wanted name_wanted
   local -A wanted=()
+  local -A found=()
   for spec in "$@"; do
     key_wanted="${spec%%:*}"
     name_wanted="${spec#*:}"
@@ -43,8 +50,20 @@ scope_secrets() {
     echo "::add-mask::${value}"
     if [[ -n "${wanted[$key]+x}" ]]; then
       echo "${wanted[$key]}=${value}" >> "$GITHUB_OUTPUT"
+      found["$key"]=1
     fi
   done < "$dotenv"
 
   rm -f "$dotenv"
+
+  local total=${#wanted[@]}
+  local missing=()
+  for key_wanted in "${!wanted[@]}"; do
+    [[ -n "${found[$key_wanted]+x}" ]] || missing+=("$key_wanted")
+  done
+
+  if (( ${#missing[@]} > 0 )); then
+    echo "::error::scope_secrets: absent requested key(s): ${missing[*]} (found $(( total - ${#missing[@]} )) of ${total} requested keys)"
+    return 1
+  fi
 }

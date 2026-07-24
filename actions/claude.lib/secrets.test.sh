@@ -154,5 +154,43 @@ check "an empty dotenv makes scope_secrets return non-zero" empty_call_fails
 check "the ::error:: line names both requested keys on an empty fetch" empty_names_both_requested_keys
 check "the ::error:: line reports found 0 of 2 requested keys" empty_reports_found_0_of_2
 
+# --- Missing-file case under the caller's real shell mode (-e) ---
+#
+# infisical.secrets.scope/action.yml's step runs as composite `shell: bash`,
+# which defaults to `bash --noprofile --norc -eo pipefail`. This whole test
+# file runs under `set -uo pipefail` (no -e, see line 13) for check()'s
+# return-value pattern, so a case run in-process here would pass even if
+# scope_secrets aborted at the `done < "$dotenv"` redirection under real -e
+# semantics — masking the exact gap a prior review caught. Spawn a nested
+# bash with the caller's actual flags so this case fails the way production
+# would if the guard regressed.
+
+MISSING_DOTENV="$TMP/does-not-exist.env"
+OUTPUT4="$TMP/output4"
+: > "$OUTPUT4"
+
+MISSING_FILE_LOG="$(bash -eo pipefail -c '
+  . ./secrets.sh
+  GITHUB_OUTPUT="$1" scope_secrets "$2" MISSING_KEY:missingOut
+' _ "$OUTPUT4" "$MISSING_DOTENV" 2>&1)"
+MISSING_FILE_STATUS=$?
+MISSING_FILE_ERROR_LINE="$(printf '%s\n' "$MISSING_FILE_LOG" | grep '^::error::' || true)"
+
+missing_file_under_real_shell_mode_fails() {
+  [[ "$MISSING_FILE_STATUS" -ne 0 ]]
+}
+
+missing_file_under_real_shell_mode_names_key() {
+  grep -qF 'MISSING_KEY' <<<"$MISSING_FILE_ERROR_LINE"
+}
+
+missing_file_under_real_shell_mode_reports_found_0_of_1() {
+  grep -qF 'found 0 of 1' <<<"$MISSING_FILE_ERROR_LINE"
+}
+
+check "a genuinely missing dotenv file fails under the caller's real -e shell mode" missing_file_under_real_shell_mode_fails
+check "...and the ::error:: line names the requested key (MISSING_KEY)" missing_file_under_real_shell_mode_names_key
+check "...and reports found 0 of 1 requested keys, not a raw bash error" missing_file_under_real_shell_mode_reports_found_0_of_1
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

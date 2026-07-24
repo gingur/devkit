@@ -34,25 +34,32 @@ scope_secrets() {
   done
 
   local line key value
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ "$line" == *=* ]] || continue
-    key="${line%%=*}"
-    value="${line#*=}"
-    [[ -n "$key" ]] || continue
-    # Infisical/secrets-action's `export: file` writes dotenv values wrapped in
-    # single quotes (GH_BOT_PAT='ghp_…'); strip a matched surrounding quote pair
-    # so consumers get the raw secret, not a 2-char-longer invalid string that
-    # fails auth as a checkout/gh token.
-    case "$value" in
-      \'*\') value="${value#\'}"; value="${value%\'}" ;;
-      \"*\") value="${value#\"}"; value="${value%\"}" ;;
-    esac
-    echo "::add-mask::${value}"
-    if [[ -n "${wanted[$key]+x}" ]]; then
-      echo "${wanted[$key]}=${value}" >> "$GITHUB_OUTPUT"
-      found["$key"]=1
-    fi
-  done < "$dotenv"
+  if [[ -f "$dotenv" ]]; then
+    # Guarded on existence (not just fed to the redirection) so a genuinely
+    # missing file falls through to the found/missing accounting below
+    # instead of failing the redirection — which would abort this function
+    # under the caller's real `set -e` before the crafted ::error:: line ever
+    # runs (devkit#184 review).
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      [[ "$line" == *=* ]] || continue
+      key="${line%%=*}"
+      value="${line#*=}"
+      [[ -n "$key" ]] || continue
+      # Infisical/secrets-action's `export: file` writes dotenv values wrapped in
+      # single quotes (GH_BOT_PAT='ghp_…'); strip a matched surrounding quote pair
+      # so consumers get the raw secret, not a 2-char-longer invalid string that
+      # fails auth as a checkout/gh token.
+      case "$value" in
+        \'*\') value="${value#\'}"; value="${value%\'}" ;;
+        \"*\") value="${value#\"}"; value="${value%\"}" ;;
+      esac
+      echo "::add-mask::${value}"
+      if [[ -n "${wanted[$key]+x}" ]]; then
+        echo "${wanted[$key]}=${value}" >> "$GITHUB_OUTPUT"
+        found["$key"]=1
+      fi
+    done < "$dotenv"
+  fi
 
   rm -f "$dotenv"
 

@@ -32,8 +32,12 @@ Derive the current state, then deliver the verdict:
    deeper (the parent ask, linked issues, repo code) where a criterion needs
    it.
 
-2. If the PR is no longer an open draft (merged, closed, or already marked
-   ready), the review is moot — post one PR comment saying so and stop.
+2. If the PR is merged or closed, the review is moot — post one PR comment
+   saying so and stop. A ready (non-draft) PR is not moot: the workflow
+   converts it to draft before this turn starts, so by the time you're
+   running it is already draft again — a re-review of a previously LGTM'd PR
+   is legitimate. Prior reviews may include an LGTM; walk the acceptance
+   criteria against the new head as usual.
 
 3. **If the PR is behind its base (`behind > 0`), bring the base in before
    reviewing.** The branch was synced when it was implemented, but siblings

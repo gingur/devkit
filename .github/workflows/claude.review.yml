@@ -112,13 +112,14 @@ jobs:
       OPERATOR: ${{ inputs.operator || (github.event.sender.login != (inputs.bot || 'gingur-bot') && github.event.sender.login || github.repository_owner) }}
     steps:
       # Dispatch mode has no pull_request payload, so the head ref/SHA must
-      # be resolved via API — and the safety guards (open draft, same-repo,
+      # be resolved via API — and the safety guards (open, same-repo,
       # bot-authored, claude/task-* head) are derived from that same API
       # truth, hard-failing before checkout and before any secret use beyond
       # github.token. They live server-side because they protect secrets from
       # checking out untrusted fork code — dispatch inputs are not trusted
       # for this. This is secrets-safety, not admission logic (which stays in
-      # gingur/hooks).
+      # gingur/hooks). Draft is no longer a guard here — see the Draft step
+      # below — but is still read so it can drive that step and the handoff.
       - name: Resolve
         id: resolve
         env:
@@ -136,7 +137,6 @@ jobs:
           headRef=$(jq -r '.headRefName' <<< "$pr")
           fail=0
           [[ "$state" == 'OPEN' ]] || { echo "::error::PR #$PR state is '$state', need OPEN"; fail=1; }
-          [[ "$draft" == 'true' ]] || { echo "::error::PR #$PR isDraft is '$draft', need true"; fail=1; }
           [[ "$cross" == 'false' ]] || { echo "::error::PR #$PR isCrossRepository is '$cross', need false"; fail=1; }
           [[ "$author" == "$BOT" ]] || { echo "::error::PR #$PR author is '$author', need '$BOT'"; fail=1; }
           [[ "$headRef" == claude/task-* ]] || { echo "::error::PR #$PR headRefName is '$headRef', need claude/task-*"; fail=1; }
@@ -144,7 +144,23 @@ jobs:
           {
             echo "headRef=$headRef"
             echo "headSha=$(jq -r '.headRefOid' <<< "$pr")"
+            echo "draft=$draft"
           } >> "$GITHUB_OUTPUT"
+
+      # Draft is the review turn's in-progress signal (like 👀 on issue
+      # turns), not a precondition: re-assigning the bot to a ready (LGTM'd)
+      # PR must still start this job. Convert it to draft here, on
+      # github.token (not the Infisical-fetched bot PAT below), so the
+      # signal lands even if the Secrets step fails. Skipped when the PR is
+      # already draft (the first-review case) rather than relying on `gh pr
+      # ready --undo` CLI idempotency.
+      - name: Draft
+        if: steps.resolve.outputs.draft != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: gh pr ready --undo "$PR" --repo "$REPO"
 
       # Secrets first so steps.secrets.outputs.ghBotPat is available to the
       # checkout below — same ordering as claude.implement.yml, and for the
@@ -201,3 +217,4 @@ jobs:
           turn: Review
           # No panel: action panels live on ask/task issues only.
           pat: ${{ steps.secrets.outputs.ghBotPat }}
+          draft: ${{ steps.resolve.outputs.draft }}

@@ -1,5 +1,5 @@
 name: 'Claude turn-end handoff'
-description: 'End an agent workflow turn: hand off to the operator (re-assign the issue from the bot), sweep action panels on success, and, on any non-success status, post a failure comment that @mentions the operator. Guarantee hierarchy: the handoff and failure comment run on github.token unconditionally, so they survive an Infisical outage; panels are best-effort — the default panel is posted with the bot PAT (the `pat` input) so the hooks service can arm it, and is skipped when the PAT is absent. Requires issues: write in the calling job.'
+description: 'End an agent workflow turn: hand off to the operator (re-assign the issue from the bot), restore a PR that was ready at trigger time on non-success, sweep action panels on success, and, on any non-success status, post a failure comment that @mentions the operator. Guarantee hierarchy: the handoff, draft-restore, and failure comment run on github.token unconditionally, so they survive an Infisical outage; panels are best-effort — the default panel is posted with the bot PAT (the `pat` input) so the hooks service can arm it, and is skipped when the PAT is absent. Requires issues: write in the calling job.'
 
 inputs:
   bot:
@@ -25,6 +25,10 @@ inputs:
     description: 'GH_BOT_PAT, scoped to this action, for the best-effort ack cleanup / panel steps below (Unack, Panels, Retry panel). Empty skips those best-effort steps — the github.token handoff and failure comment still run.'
     required: false
     default: ''
+  draft:
+    description: "The PR's trigger-time draft state as a string ('true'/'false'); empty for issue turns."
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -40,6 +44,23 @@ runs:
       run: |
         gh issue edit "$ISSUE" --repo "$REPO" \
           --remove-assignee "$BOT" --add-assignee "$OPERATOR"
+
+    # Draft is the review turn's in-progress signal (the workflow converts a
+    # ready PR to draft at kickoff): restore it on non-success, mirroring
+    # Unack. Success is handled by the agent itself (LGTM flips it ready;
+    # blocking findings leave it draft), so this step only fires on the
+    # failure path, and only when the PR was ready at trigger time — one that
+    # was already draft going in stays draft. github.token (not the PAT):
+    # same unconditional tier as Handoff and Report failure. Issue-turn
+    # callers pass no `draft` input, so this step never runs for them.
+    - name: Restore
+      if: inputs.status != 'success' && inputs.draft == 'false'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ISSUE: ${{ inputs.issue }}
+        REPO: ${{ github.repository }}
+      shell: bash
+      run: gh pr ready "$ISSUE" --repo "$REPO"
 
     # Remove the bot's 👀 acknowledgements (added by the intake layer —
     # gingur/hooks — on the triggering comment) — the turn is over either

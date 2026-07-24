@@ -99,3 +99,47 @@ jobs:
             echo "secret hygiene: clean — no job-wide export, no infisical.secrets.fetch, no \${{ env.* }} secret read, no secret written to \$GITHUB_ENV, no stray DATABASE_URL, no bare env/printenv/set -x"
           fi
           exit "$fail"
+
+      # Static guard that the EM sign-off verdict can't declare an objective
+      # delivered while a task PR is unmerged or unmergeable — the class of
+      # bug behind devkit#177 (the signoff prompt never read PR merge state).
+      # Same evidence-before-failing discipline as the steps above.
+      - name: Sign-off mergeability gate
+        run: |
+          set -uo pipefail
+          file=actions/claude.plan/prompt.md
+          echo "checking $file"
+
+          fail=0
+          report() { # <label> <grep output>
+            echo
+            echo "::error::$1"
+            printf '%s\n' "$2"
+            fail=1
+          }
+
+          hits=$(grep -n 'mergeStateStatus' "$file" || true)
+          if [[ -z "$hits" ]]; then
+            report "signoff section does not read mergeStateStatus (PR merge-state gate missing)" "(no match in $file)"
+          else
+            printf '%s\n' "$hits"
+          fi
+
+          hits=$(grep -n 'mergeable' "$file" || true)
+          if [[ -z "$hits" ]]; then
+            report "signoff section does not read mergeable (PR merge-state gate missing)" "(no match in $file)"
+          else
+            printf '%s\n' "$hits"
+          fi
+
+          hits=$(grep -nE 'refuse a .*delivered.* verdict' "$file" || true)
+          if [[ -z "$hits" ]]; then
+            report "signoff section has no refusal instruction for a failed mergeability gate" "(no match in $file)"
+          else
+            printf '%s\n' "$hits"
+          fi
+
+          if [[ "$fail" -eq 0 ]]; then
+            echo "sign-off mergeability gate: clean — prompt reads mergeable/mergeStateStatus and refuses a delivered verdict on gate failure"
+          fi
+          exit "$fail"

@@ -48,6 +48,11 @@ jobs:
       - name: Secret scoping fixtures
         run: bash actions/claude.lib/secrets.test.sh
 
+      # Locks the fetch-failure reporting primitive against fixtures — no
+      # network, no token. See actions/claude.lib/fetch.sh.
+      - name: Fetch failure fixtures
+        run: bash actions/claude.lib/fetch.test.sh
+
       # Static guard against job-wide secret exposure in agent-turn
       # workflows/composites — the class of bug behind devkit#168 (an
       # implement turn ran `env | grep database_url` and printed a live

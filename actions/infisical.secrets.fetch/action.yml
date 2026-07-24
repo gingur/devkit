@@ -31,6 +31,8 @@ runs:
   using: 'composite'
   steps:
     - name: Fetch secrets
+      id: fetch
+      continue-on-error: true
       uses: Infisical/secrets-action@v1.0.16
       with:
         method: oidc
@@ -41,3 +43,14 @@ runs:
         secret-path: ${{ inputs.path }}
         export-type: ${{ inputs.export }}
         file-output-path: ${{ inputs.fileOutputPath }}
+
+      # Infisical/secrets-action prints nothing on a non-zero exit (see
+      # actions/claude.lib/fetch.sh) — continue-on-error above lets this
+      # guard run and report before the composite fails for real.
+    - name: Report fetch failure
+      if: steps.fetch.outcome != 'success'
+      shell: bash
+      run: |
+        . "${GITHUB_ACTION_PATH}/../claude.lib/fetch.sh"
+        report_fetch_failure "${{ steps.fetch.outcome }}" "${{ inputs.identity }}" "${{ inputs.project }}" "${{ inputs.env }}" "${{ inputs.path }}" "${{ inputs.audience }}"
+        exit 1

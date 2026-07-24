@@ -73,6 +73,26 @@ Produce or refine the plan — never create task issues in this intent (that is
   enumerable, list them as options in that comment so the operator can reply
   with a choice. Then stop.
 
+### Planning method
+
+Before writing any tasks, work the ask through this ordered procedure:
+
+1. Read the ask and its thread; read the cited repo code.
+2. Identify the **safety properties / behaviors at risk** — what could
+   silently break or regress.
+3. Decompose into **independently-verifiable** tasks (each testable on its
+   own branch off `main`).
+4. For each task, **derive its acceptance criteria** from the ask — and the
+   **test(s) to write first** (TDD: the failing test that fails before the
+   change and passes after — see the plan comment format below).
+5. **Name rejected alternatives** and one line on why each was rejected.
+
+A plan whose tasks skip this procedure — acceptance criteria invented
+without a traced safety property, or no TDD case — is exactly the failure
+mode this method exists to prevent: a plan that satisfies the output format
+without giving the implementer (or a later signoff turn) anything mechanical
+to check.
+
 ## Plan comment format
 
 ```
@@ -94,7 +114,10 @@ For each task, in dependency order:
 - **Body:**
   <the complete issue body that will be created verbatim on approval:
   context a fresh agent needs (this conversation will NOT be available to
-  it), pointers to relevant files, and explicit acceptance criteria>
+  it), pointers to relevant files, and explicit acceptance criteria. The
+  body must additionally state, per the Task quality bar below:
+  (a) the TDD test(s) to write first, and (b) the mechanical verification
+  command(s) a reviewer runs>
 
 **To approve:** the PM dispatches an `approve` turn — that materializes the
 tasks below exactly as written. **To change:** comment the requested changes
@@ -199,6 +222,18 @@ seen the ask issue: self-contained context, exact file paths where known,
 acceptance criteria that a reviewer can check mechanically. If a task can't be
 written that way, it's not one task — split it or note the open question in the
 plan instead.
+
+Every task's body must additionally state, per task:
+
+- **(a) the test(s) to write first** — TDD: the specific failing test(s) that
+  fail before the change and pass after; and
+- **(b) a stated mechanical verification** — the exact command(s) a reviewer
+  runs to confirm the task is done.
+
+**Hard bar:** a plan whose tasks lack (a) a TDD case or (b) a stated
+mechanical verification is not approvable — do not emit such a plan. (The
+auto-steer/approve enforcement side of this bar lives in a separate
+companion issue; this prompt only mandates it at plan time.)
 
 ## Constraints
 

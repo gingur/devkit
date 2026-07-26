@@ -11,7 +11,7 @@
 #
 # No network, no token — pure fixture data.
 #
-# Run: bash actions/claude.lib/fetch.test.sh
+# Run: bash actions/infisical.secrets.fetch/fetch.test.sh
 set -uo pipefail
 cd "$(dirname "$0")"
 

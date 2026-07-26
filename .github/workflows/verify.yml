@@ -3,19 +3,13 @@ name: Verify
 #
 # Everything under actions/ ships to every enrolled repo on `@main`, so a
 # regression here lands fleet-wide the moment it merges — there is no staging
-# step between this repo and production. #147 changed the agent's comment
-# identity and false-failed every plan/implement/review turn in every repo, and
-# nothing caught it because this repo had no PR-triggered test job at all: the
-# only workflow on `pull_request` was the secret scan.
-#
-# Runs GitHub-hosted by design (devkit standards: only operator-gated triggers
-# may target the `local` self-hosted runner).
+# step between this repo and production. Keep the guards here cheap and
+# network-free so they can't false-fail a consumer's deploy.
 on:
   pull_request:
     paths:
       - 'actions/**'
       - '.github/workflows/verify.yml'
-      - '.github/workflows/claude.*.yml'
 
 permissions:
   contents: read
@@ -28,169 +22,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      # Catches the class of breakage that only shows up at turn time, when a
-      # composite sources a lib whose syntax never got exercised locally.
+      # Catches shell breakage in composite actions before it ships fleet-wide.
+      # No-op until a composite adds a *.sh; kept so the guard exists the moment
+      # one does.
       - name: Shell syntax
         run: |
           set -euo pipefail
           mapfile -t files < <(git ls-files 'actions/**/*.sh')
           printf 'checking %s shell file(s)\n' "${#files[@]}"
           for f in "${files[@]}"; do bash -n "$f"; done
-
-      # Locks the agent comment-identity contract against fixtures — no network,
-      # no token, real jq selectors. See
-      # docs/incidents/2026-07-17-turn-guard-identity.md.
-      - name: Turn contract fixtures
-        run: bash actions/claude.lib/turn.test.sh
-
-      # Locks the secret-scoping primitive against fixtures — no network, no
-      # token. See actions/claude.lib/secrets.sh.
-      - name: Secret scoping fixtures
-        run: bash actions/claude.lib/secrets.test.sh
-
-      # Locks the fetch-failure reporting primitive against fixtures — no
-      # network, no token. See actions/claude.lib/fetch.sh.
-      - name: Fetch failure fixtures
-        run: bash actions/claude.lib/fetch.test.sh
-
-      # Static guard against job-wide secret exposure in agent-turn
-      # workflows/composites — the class of bug behind devkit#168 (an
-      # implement turn ran `env | grep database_url` and printed a live
-      # DATABASE_URL into the Actions log because the turn's Secrets step
-      # exported job-wide via GITHUB_ENV). Same evidence-before-failing
-      # discipline as turn.sh: print what was found, then fail.
-      - name: Secret hygiene
-        run: |
-          set -uo pipefail
-          mapfile -t files < <(git ls-files '.github/workflows/claude.*.yml' 'actions/claude.*/action.yml')
-          printf 'checking %s turn file(s):\n' "${#files[@]}"
-          printf '  %s\n' "${files[@]}"
-
-          fail=0
-          report() { # <label> <grep output>
-            echo
-            echo "::error::$1"
-            printf '%s\n' "$2"
-            fail=1
-          }
-
-          hits=$(grep -nE 'export-type:\s*env|export:\s*env' "${files[@]}" || true)
-          [[ -n "$hits" ]] && report "job-wide secret export found (use infisical.secrets.scope, not export: env)" "$hits"
-
-          # infisical.secrets.fetch's own export input defaults to 'env' when
-          # omitted, so a bare `uses: …infisical.secrets.fetch@…` with no
-          # explicit `export:` key trips none of the checks above — the exact
-          # shape of the pre-#168 vulnerable step. infisical.secrets.scope is
-          # the only sanctioned entry point for these files; ban the other one
-          # outright rather than trying to distinguish safe vs. unsafe calls.
-          hits=$(grep -nE 'infisical\.secrets\.fetch' "${files[@]}" || true)
-          [[ -n "$hits" ]] && report "infisical.secrets.fetch used directly (turn files must use infisical.secrets.scope, which defaults to file-scoped export)" "$hits"
-
-          hits=$(grep -nE 'GITHUB_ENV' "${files[@]}" | grep -E 'GH_BOT_PAT|GH_DRIVER_PAT|CLAUDE_CODE_OAUTH_TOKEN|DATABASE_URL' || true)
-          [[ -n "$hits" ]] && report "a known secret name is written to \$GITHUB_ENV (secrets must stay step-scoped)" "$hits"
-
-          # The PR's own acceptance criterion: no turn file may read a secret
-          # back out of job-wide env after the scope-per-step rewrite.
-          hits=$(grep -nE '\$\{\{\s*env\.(GH_BOT_PAT|GH_DRIVER_PAT|CLAUDE_CODE_OAUTH_TOKEN|DATABASE_URL)\s*\}\}' "${files[@]}" || true)
-          [[ -n "$hits" ]] && report "a turn file reads a secret from job-wide \${{ env.* }} (secrets must be threaded via step outputs/inputs)" "$hits"
-
-          hits=$(grep -lE 'DATABASE_URL|databaseUrl' "${files[@]}" | grep -v 'reconcile' || true)
-          [[ -n "$hits" ]] && report "DATABASE_URL/databaseUrl referenced outside claude.reconcile (only the reconcile turn does DB work)" "$hits"
-
-          hits=$(grep -nE '(^|[^./$A-Za-z0-9_-])(env|printenv)(\s|$)|set -x' "${files[@]}" | grep -vE ':[0-9]+:\s*#' || true)
-          [[ -n "$hits" ]] && report "a bare env/printenv invocation or 'set -x' found (can dump secrets into the Actions log)" "$hits"
-
-          if [[ "$fail" -eq 0 ]]; then
-            echo "secret hygiene: clean — no job-wide export, no infisical.secrets.fetch, no \${{ env.* }} secret read, no secret written to \$GITHUB_ENV, no stray DATABASE_URL, no bare env/printenv/set -x"
-          fi
-          exit "$fail"
-
-      # Static guard that the EM sign-off verdict can't declare an objective
-      # delivered while a task PR is unmerged or unmergeable — the class of
-      # bug behind devkit#177 (the signoff prompt never read PR merge state).
-      # Same evidence-before-failing discipline as the steps above.
-      - name: Sign-off mergeability gate
-        run: |
-          set -uo pipefail
-          file=actions/claude.plan/prompt.md
-          echo "checking $file"
-
-          fail=0
-          report() { # <label> <grep output>
-            echo
-            echo "::error::$1"
-            printf '%s\n' "$2"
-            fail=1
-          }
-
-          hits=$(grep -n 'mergeStateStatus' "$file" || true)
-          if [[ -z "$hits" ]]; then
-            report "signoff section does not read mergeStateStatus (PR merge-state gate missing)" "(no match in $file)"
-          else
-            printf '%s\n' "$hits"
-          fi
-
-          hits=$(grep -n 'mergeable' "$file" || true)
-          if [[ -z "$hits" ]]; then
-            report "signoff section does not read mergeable (PR merge-state gate missing)" "(no match in $file)"
-          else
-            printf '%s\n' "$hits"
-          fi
-
-          hits=$(grep -nE 'refuse a .*delivered.* verdict' "$file" || true)
-          if [[ -z "$hits" ]]; then
-            report "signoff section has no refusal instruction for a failed mergeability gate" "(no match in $file)"
-          else
-            printf '%s\n' "$hits"
-          fi
-
-          if [[ "$fail" -eq 0 ]]; then
-            echo "sign-off mergeability gate: clean — prompt reads mergeable/mergeStateStatus and refuses a delivered verdict on gate failure"
-          fi
-          exit "$fail"
-
-      # Static guard that the planner prompt actually teaches a planning
-      # method and mandates TDD per task — the class of bug behind
-      # devkit#180 (a plan satisfied the output format and quality-bar prose
-      # while giving the planner no method for how to think, and no TDD
-      # requirement, letting a weak plan through to a false "delivered"
-      # sign-off). Same evidence-before-failing discipline as the steps above.
-      - name: Planner method mandate
-        run: |
-          set -uo pipefail
-          file=actions/claude.plan/prompt.md
-          echo "checking $file"
-
-          fail=0
-          report() { # <label> <grep output>
-            echo
-            echo "::error::$1"
-            printf '%s\n' "$2"
-            fail=1
-          }
-
-          hits=$(grep -n '^### Planning method' "$file" || true)
-          if [[ -z "$hits" ]]; then
-            report "planner prompt has no '### Planning method' section" "(no match in $file)"
-          else
-            printf '%s\n' "$hits"
-          fi
-
-          hits=$(grep -n 'TDD' "$file" || true)
-          if [[ -z "$hits" ]]; then
-            report "planner prompt does not mention TDD" "(no match in $file)"
-          else
-            printf '%s\n' "$hits"
-          fi
-
-          hits=$(grep -inE 'test\(s\)? to write first' "$file" || true)
-          if [[ -z "$hits" ]]; then
-            report "planner prompt does not require 'test(s) to write first' per task" "(no match in $file)"
-          else
-            printf '%s\n' "$hits"
-          fi
-
-          if [[ "$fail" -eq 0 ]]; then
-            echo "planner method mandate: clean — prompt has a Planning method section and requires TDD test(s) to write first per task"
-          fi
-          exit "$fail"

@@ -98,12 +98,12 @@ don't replace it with a generic message.
 
 ## Availability: single-box by choice
 
-The gingur fleet runs on one machine (the "Gingur Box") as an accepted single
-point of failure. When the box is down, the self-hosted runners, the `hooks`
-service, and anything bridged through them are down too — **that is fine**.
-Do not design redundancy, failover, or box-down fallback paths, and do not
-weigh box availability as a trade-off when planning: document the actual
-behavior (e.g. "queued jobs fail after 24 h") and move on.
+Infra runs on one machine (the "Gingur Box") as an accepted single point of
+failure. When the box is down, the self-hosted runners and anything bridged
+through them are down too — **that is fine**. Do not design redundancy,
+failover, or box-down fallback paths, and do not weigh box availability as a
+trade-off when planning: document the actual behavior (e.g. "queued jobs fail
+after 24 h") and move on.
 
 ## Action pinning
 
@@ -133,34 +133,6 @@ so it's bumped once.
   Storage is required by `wrangler delete` (preview cleanup probes the script's
   KV namespaces during teardown — verified live, gingur/troyrhinehart PR#25).
 - `id-token: write` permission is required in any job that fetches secrets.
-
----
-
-## Agent turns: the comment-identity contract
-
-A turn writes to GitHub under **two different identities**, and anything that
-reads back what a turn wrote must account for both:
-
-| What | Identity | Why |
-| --- | --- | --- |
-| The agent's own comments (plan, summary, blocker report) | **`claude[bot]`** — the Claude GitHub App | The agent posts through the action, not through `$BOT`'s PAT |
-| Submitted PR reviews, and steps that shell out to `gh` | **`$BOT`** (`gingur-bot`) | These use `GH_BOT_PAT` directly |
-
-**Rule:** any guard, filter, or query that keys on comment author must accept
-**both** `$BOT` and `claude[bot]`. Matching only `$BOT` silently sees zero
-comments even when the agent posted correctly.
-
-This is not hypothetical. #147 retired the `github_token`-authored action panel,
-which moved the agent's comment from `gingur-bot` to `claude[bot]`. The contract
-guards still matched only `$BOT`, so **every** plan/implement/review turn
-false-failed while doing its job correctly — and the PM re-dispatched the
-"failed" turns in a loop. See
-[docs/incidents/2026-07-17-turn-guard-identity.md](./docs/incidents/2026-07-17-turn-guard-identity.md).
-
-Guards must also **emit evidence before failing** (#149): print what actually
-landed in the turn window and which authors are accepted. A contract error that
-asserts "posted nothing" without proof is worse than no check at all when the
-assertion is false.
 
 ---
 
@@ -208,18 +180,13 @@ devkit's floor.
 ### Self-hosted runner routing
 
 - **Only operator-gated triggers may target the `local` self-hosted runner:**
-  `push` to main (deploy) and `workflow_dispatch` (rollback, and the agent
-  executors — plan.yml / implement.yml / review.yml, calling claude.plan /
-  claude.implement / claude.review — dispatching requires write access: the
-  operator directly, or the hooks service via the operator PAT). PR-triggered
+  `push` to main (deploy) and `workflow_dispatch` (rollback). PR-triggered
   workflows (verify, preview, preview cleanup, secret scan) always run
   GitHub-hosted; `cf.worker.preview*.yml` deliberately expose no `runner`
-  input. claude.review checks out PR-head code only after its Resolve step
-  verifies (from API truth) a bot-authored, same-repo, open draft
-  `claude/task-*` PR.
+  input.
 - **Wiring:** set the repo variable `RUNNER=local` and pass
-  `runner: ${{ vars.RUNNER }}` in **every** caller workflow (agent executors —
-  plan / implement / review — and deploy / rollback alike). A caller repo's
+  `runner: ${{ vars.RUNNER }}` in **every** caller workflow (deploy / rollback).
+  A caller repo's
   variables do not resolve inside a cross-repo reusable workflow, so the
   reusables' own `vars.RUNNER` fallback only works for devkit's own direct
   dispatch runs — a consumer that omits the input silently runs GitHub-hosted

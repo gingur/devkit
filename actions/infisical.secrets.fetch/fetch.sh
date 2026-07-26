@@ -1,7 +1,7 @@
 # Shared step shell for infisical.secrets.fetch's failure guard.
-# Sourced from a composite's step as
+# Sourced from the composite's step as
 #
-#   . "${GITHUB_ACTION_PATH}/../claude.lib/fetch.sh"
+#   . "${GITHUB_ACTION_PATH}/fetch.sh"
 #
 # Infisical/secrets-action prints nothing on a non-zero exit — no ::error::,
 # no HTTP status, no exit message (observed: run 30111303346, step `Secrets`

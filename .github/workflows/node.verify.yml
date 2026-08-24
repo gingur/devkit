@@ -1,30 +1,30 @@
-name: Verify
+name: Verify (legacy Node entrypoint)
 
 on:
   workflow_call:
     inputs:
       node:
-        description: 'Node.js version (optional override). Empty means read from .nvmrc.'
+        description: 'Node.js version override. Prefer .nvmrc.'
         type: string
         required: false
         default: ''
       pnpm:
-        description: 'pnpm version (optional override). Empty means read from packageManager field.'
+        description: 'pnpm version override. Prefer package.json packageManager/devEngines.'
         type: string
         required: false
         default: ''
       bun:
-        description: 'Install Bun. When true, read the version from .bun-version unless bun_version is set.'
+        description: 'Deprecated compatibility flag; Bun is auto-detected from repo version files.'
         type: boolean
         required: false
         default: false
       bun_version:
-        description: 'Optional Bun version override. Empty means read from .bun-version.'
+        description: 'Optional Bun version override.'
         type: string
         required: false
         default: ''
       cwd:
-        description: 'Directory containing package.json'
+        description: 'Directory containing package.json.'
         type: string
         required: false
         default: '.'
@@ -49,7 +49,7 @@ on:
         required: false
         default: ''
       runner:
-        description: 'Runner label'
+        description: 'Runner label.'
         type: string
         required: false
         default: 'ubuntu-latest'
@@ -59,42 +59,14 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
-    defaults:
-      run:
-        working-directory: ${{ inputs.cwd }}
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: gingur/devkit/actions/node.setup@main
-        with:
-          node: ${{ inputs.node }}
-          pnpm: ${{ inputs.pnpm }}
-
-      - name: Setup Bun from override
-        if: ${{ inputs.bun && inputs.bun_version != '' }}
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ inputs.bun_version }}
-
-      - name: Setup Bun from .bun-version
-        if: ${{ inputs.bun && inputs.bun_version == '' }}
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
-
-      - name: Lint
-        if: ${{ inputs.lint != '' }}
-        run: pnpm ${{ inputs.lint }}
-
-      - name: Typecheck
-        if: ${{ inputs.typecheck != '' }}
-        run: pnpm ${{ inputs.typecheck }}
-
-      - name: Test
-        if: ${{ inputs.test != '' }}
-        run: pnpm ${{ inputs.test }}
-
-      - name: Build
-        if: ${{ inputs.build != '' }}
-        run: pnpm ${{ inputs.build }}
+    uses: ./.github/workflows/toolchain.verify.yml
+    with:
+      cwd: ${{ inputs.cwd }}
+      node: ${{ inputs.node }}
+      pnpm: ${{ inputs.pnpm }}
+      bun: ${{ inputs.bun_version }}
+      lint: ${{ inputs.lint }}
+      typecheck: ${{ inputs.typecheck }}
+      test: ${{ inputs.test }}
+      build: ${{ inputs.build }}
+      runner: ${{ inputs.runner }}

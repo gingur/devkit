@@ -28,7 +28,8 @@ include:
 - Commit messages are conventional commits matching existing history:
   `<type>(<scope>): <subject>` — e.g. `feat(actions): …`, `fix(workflows): …`, `docs(readme): …`.
 - Formatting/lint uses the repo's own configs (`oxfmt.config.ts`, `.oxlintrc.json`).
-  `pnpm install` sets up the husky `pre-commit` hook (via the `prepare` script), which runs
-  `lint-staged` and `infisical scan git-changes --staged` — the `infisical` CLI must be on PATH.
+  After cloning, run `pnpm install` and then `pnpm hooks:install` once to configure Husky. The
+  `pre-commit` hook runs `lint-staged` and `infisical scan git-changes --staged` — the `infisical`
+  CLI must be on PATH.
 - Never commit `docs/superpowers/` — local-only planning artifacts (see
   [`CLAUDE.md`](./CLAUDE.md)).

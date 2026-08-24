@@ -1,40 +1,55 @@
-name: Verify
+name: Verify (legacy Node entrypoint)
 
 on:
   workflow_call:
     inputs:
       node:
-        description: 'Node.js version (optional override). Empty means read from .nvmrc.'
+        description: 'Node.js version override. Prefer .nvmrc.'
         type: string
         required: false
         default: ''
       pnpm:
-        description: 'pnpm version (optional override). Empty means read from packageManager field.'
+        description: 'pnpm version override. Prefer package.json packageManager/devEngines.'
+        type: string
+        required: false
+        default: ''
+      bun:
+        description: 'Deprecated compatibility flag; Bun is auto-detected from repo version files.'
+        type: boolean
+        required: false
+        default: false
+      bun_version:
+        description: 'Optional Bun version override.'
         type: string
         required: false
         default: ''
       cwd:
-        description: 'Directory containing package.json'
+        description: 'Directory containing package.json.'
         type: string
         required: false
         default: '.'
       lint:
-        description: 'pnpm script to run for lint'
+        description: 'pnpm script to run for lint. Empty skips lint.'
         type: string
         required: false
         default: 'lint'
       typecheck:
-        description: 'pnpm script to run for typecheck'
+        description: 'pnpm script to run for typecheck. Empty skips typecheck.'
         type: string
         required: false
         default: 'typecheck'
       test:
-        description: 'pnpm script to run for tests'
+        description: 'pnpm script to run for tests. Empty skips tests.'
         type: string
         required: false
         default: 'test'
+      build:
+        description: 'pnpm script to run for build. Empty skips build.'
+        type: string
+        required: false
+        default: ''
       runner:
-        description: 'Runner label'
+        description: 'Runner label.'
         type: string
         required: false
         default: 'ubuntu-latest'
@@ -44,23 +59,14 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
-    defaults:
-      run:
-        working-directory: ${{ inputs.cwd }}
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: gingur/devkit/actions/node.setup@main
-        with:
-          node: ${{ inputs.node }}
-          pnpm: ${{ inputs.pnpm }}
-
-      - name: Lint
-        run: pnpm ${{ inputs.lint }}
-
-      - name: Typecheck
-        run: pnpm ${{ inputs.typecheck }}
-
-      - name: Test
-        run: pnpm ${{ inputs.test }}
+    uses: ./.github/workflows/toolchain.verify.yml
+    with:
+      cwd: ${{ inputs.cwd }}
+      node: ${{ inputs.node }}
+      pnpm: ${{ inputs.pnpm }}
+      bun: ${{ inputs.bun_version }}
+      lint: ${{ inputs.lint }}
+      typecheck: ${{ inputs.typecheck }}
+      test: ${{ inputs.test }}
+      build: ${{ inputs.build }}
+      runner: ${{ inputs.runner }}

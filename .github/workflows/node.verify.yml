@@ -13,26 +13,36 @@ on:
         type: string
         required: false
         default: ''
+      bun:
+        description: 'Bun version to install. Empty disables Bun setup.'
+        type: string
+        required: false
+        default: ''
       cwd:
         description: 'Directory containing package.json'
         type: string
         required: false
         default: '.'
       lint:
-        description: 'pnpm script to run for lint'
+        description: 'pnpm script to run for lint. Empty skips lint.'
         type: string
         required: false
         default: 'lint'
       typecheck:
-        description: 'pnpm script to run for typecheck'
+        description: 'pnpm script to run for typecheck. Empty skips typecheck.'
         type: string
         required: false
         default: 'typecheck'
       test:
-        description: 'pnpm script to run for tests'
+        description: 'pnpm script to run for tests. Empty skips tests.'
         type: string
         required: false
         default: 'test'
+      build:
+        description: 'pnpm script to run for build. Empty skips build.'
+        type: string
+        required: false
+        default: ''
       runner:
         description: 'Runner label'
         type: string
@@ -56,11 +66,24 @@ jobs:
           node: ${{ inputs.node }}
           pnpm: ${{ inputs.pnpm }}
 
+      - name: Setup Bun
+        if: ${{ inputs.bun != '' }}
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ inputs.bun }}
+
       - name: Lint
+        if: ${{ inputs.lint != '' }}
         run: pnpm ${{ inputs.lint }}
 
       - name: Typecheck
+        if: ${{ inputs.typecheck != '' }}
         run: pnpm ${{ inputs.typecheck }}
 
       - name: Test
+        if: ${{ inputs.test != '' }}
         run: pnpm ${{ inputs.test }}
+
+      - name: Build
+        if: ${{ inputs.build != '' }}
+        run: pnpm ${{ inputs.build }}

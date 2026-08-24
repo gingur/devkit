@@ -14,7 +14,12 @@ on:
         required: false
         default: ''
       bun:
-        description: 'Bun version to install. Empty disables Bun setup.'
+        description: 'Install Bun. When true, read the version from .bun-version unless bun_version is set.'
+        type: boolean
+        required: false
+        default: false
+      bun_version:
+        description: 'Optional Bun version override. Empty means read from .bun-version.'
         type: string
         required: false
         default: ''
@@ -66,11 +71,17 @@ jobs:
           node: ${{ inputs.node }}
           pnpm: ${{ inputs.pnpm }}
 
-      - name: Setup Bun
-        if: ${{ inputs.bun != '' }}
+      - name: Setup Bun from override
+        if: ${{ inputs.bun && inputs.bun_version != '' }}
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: ${{ inputs.bun }}
+          bun-version: ${{ inputs.bun_version }}
+
+      - name: Setup Bun from .bun-version
+        if: ${{ inputs.bun && inputs.bun_version == '' }}
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
 
       - name: Lint
         if: ${{ inputs.lint != '' }}

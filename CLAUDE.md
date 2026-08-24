@@ -15,27 +15,27 @@ sessions and human contributors follow these. Human-facing usage docs live in
 
 A 3-tier identifier system. Pick the tier by _what kind of thing_ you're naming.
 
-| Tier                                                 | Convention                             | Examples                                                                                                     |
-| ---------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| **File names** (workflows, action dirs)              | `lowercase.dot.notation`               | `cf.worker.preview.yml`, `node.verify.yml`, `actions/infisical.secrets.fetch/`, `infisical.secrets.scan.yml` |
-| **Identifiers** (inputs, job ids, step ids, outputs) | `camelCase`, single word when possible | `deploy`, `worker`, `domain`, `cfZone`                                                                       |
-| **Env vars & secrets**                               | `SCREAMING_SNAKE_CASE`                 | `CF_API_TOKEN`, `CF_ACCOUNT_ID`                                                                              |
+| Tier                                                 | Convention                             | Examples                                                                                                          |
+| ---------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **File names** (workflows, action dirs)              | `lowercase.dot.notation`               | `toolchain.verify.yml`, `actions/toolchain.setup/`, `cf.worker.preview.yml`, `infisical.secrets.scan.yml`        |
+| **Identifiers** (inputs, job ids, step ids, outputs) | `camelCase`, single word when possible | `deploy`, `worker`, `domain`, `cfZone`                                                                            |
+| **Env vars & secrets**                               | `SCREAMING_SNAKE_CASE`                 | `CF_API_TOKEN`, `CF_ACCOUNT_ID`                                                                                   |
 
 ### File names: `<provider>.<service>.<action…>`
 
 A **dotted path**, broad → specific — **not capped at three segments**. `<service>`
-drops when the provider has one surface (2 segments: `node.verify`), and `<action…>`
+drops when the provider has one surface (2 segments: `toolchain.verify`), and `<action…>`
 takes extra dots for compound lifecycles (4+: `cf.worker.preview.cleanup`).
 
 - **provider** — the tool/platform namespace, **abbreviated** where a common short
-  form exists: `cf` (Cloudflare); `infisical`; concrete runtimes `node` / `bun`.
-  Runtime is the provider axis for language tooling (`node` today, `bun` as a
-  future sibling — kept separate, never abstracted to "runtime").
+  form exists: `cf` (Cloudflare); `infisical`; `toolchain` for cross-runtime
+  environment setup and verification. Concrete runtime versions belong in the
+  consuming repo's native version files rather than separate shared setup actions.
 - **service** — the resource within the provider (`worker`, `secrets`). **Omit**
-  when the provider has one obvious surface: `node.verify`, `node.setup`.
+  when the provider has one obvious surface: `toolchain.verify`, `toolchain.setup`.
 - **action** — the operation, named for **intent** not trigger (`deploy`,
   `preview`, `verify`, `setup`, `fetch`, `domain`). _Not_ `ci` (that's a trigger,
-  not an intent — it lints+typechecks+tests, so it's `verify`).
+  not an intent — it lints+typechecks+tests+builds, so it's `verify`).
 - **Compound lifecycles extend with more dots, not hyphens**:
   `cf.worker.preview.cleanup`, never `cf.worker.preview-cleanup`.
 - Applies to reusable workflows (must be flat — GitHub forbids subdirs under
@@ -111,7 +111,7 @@ Pin by **trust in who can move the tag**:
 
 - **gingur's own** actions/workflows → `@main`.
 - **Third-party from a credible org** (the tool's official org or a well-known
-  GitHub org — `cloudflare`, `Infisical`, `pnpm`, `actions`) → **version tag**
+  GitHub org — `cloudflare`, `Infisical`, `moonrepo`, `actions`) → **version tag**
   (`@v4`). Readable, vendor-controlled, picks up patches.
 - **Third-party from an individual / community maintainer** (a personal account,
   not an org — e.g. `marocchino`) → **full commit SHA** + trailing version comment.
@@ -140,11 +140,27 @@ so it's bumped once.
 
 What a consumer repo (e.g. a site deployed via devkit) must follow.
 
+### Toolchain declarations
+
+Runtime and package-manager versions live in the consumer repo and are shared by
+local development and CI. Prefer native ecosystem files that proto understands:
+
+```text
+.nvmrc          # Node
+.bun-version    # Bun (when used)
+package.json    # packageManager/devEngines for pnpm and other tooling
+pnpm-lock.yaml
+```
+
+`actions/toolchain.setup` is the shared CI primitive. Local developers use the
+same declarations with `proto install`; do not duplicate routine runtime versions
+in workflow YAML unless a one-off override is genuinely required.
+
 ### Calling reusable workflows
 
 | Goal                                                      | Call                                                                 |
 | --------------------------------------------------------- | -------------------------------------------------------------------- |
-| Verify (lint+typecheck+test) on PR                        | `gingur/devkit/.github/workflows/node.verify.yml@main`               |
+| Verify (lint+typecheck+test+build) on PR                  | `gingur/devkit/.github/workflows/toolchain.verify.yml@main`          |
 | Deploy to production on push                              | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main`          |
 | Per-PR preview deploy                                     | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main`         |
 | Tear down preview on PR close                             | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
@@ -157,8 +173,8 @@ Pin to `@main` (the gingur consumer convention).
 
 Consumers import devkit tool configs (the `exports` map over `configs/`) via
 `"@gingur/devkit": "github:gingur/devkit#main"`. CI is live regardless of the
-committed lockfile: `actions/node.setup` runs `pnpm update @gingur/devkit`
-after its frozen install, so `node.verify.yml` and `cf.worker.deploy.yml`
+committed lockfile: `actions/toolchain.setup` runs `pnpm update @gingur/devkit`
+after its frozen install, so `toolchain.verify.yml` and `cf.worker.deploy.yml`
 resolve the dependency **specifier** fresh every run — `#main` → branch head
 (live, the fleet default); a SHA specifier → hold-back during a migration; a
 future `#semver:` tag → range-bounded. No-op when the dep is absent. Local dev

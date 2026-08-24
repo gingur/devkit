@@ -9,7 +9,7 @@ Shared GitHub Actions and reusable workflows for [@gingur](https://github.com/gi
 actions/             composite actions   — uses: gingur/devkit/actions/<name>@main
 ```
 
-> Reusable workflows must live directly in `.github/workflows/` (GitHub requirement — no subdirs), so names group by **dot-notation** instead: `<provider>.<service>.<action…>.yml` — an extensible dotted path, not capped at three segments (`node.verify.yml`, `cf.worker.deploy.yml`, `cf.worker.preview.cleanup.yml`). See [`CLAUDE.md`](./CLAUDE.md) for the naming standard.
+> Reusable workflows must live directly in `.github/workflows/` (GitHub requirement — no subdirs), so names group by **dot-notation** instead: `<provider>.<service>.<action…>.yml` — an extensible dotted path, not capped at three segments (`toolchain.verify.yml`, `cf.worker.deploy.yml`, `cf.worker.preview.cleanup.yml`). See [`CLAUDE.md`](./CLAUDE.md) for the naming standard.
 
 ## Using from another repo
 
@@ -18,17 +18,26 @@ actions/             composite actions   — uses: gingur/devkit/actions/<name>@
 ```yaml
 jobs:
   verify:
-    uses: gingur/devkit/.github/workflows/node.verify.yml@main
-    with:
-      node: '20'
+    uses: gingur/devkit/.github/workflows/toolchain.verify.yml@main
 ```
 
 **Composite action:**
 
 ```yaml
 steps:
-  - uses: gingur/devkit/actions/node.setup@main
+  - uses: gingur/devkit/actions/toolchain.setup@main
 ```
+
+Runtime and package-manager versions belong to the consuming repo. Proto reads the same declarations locally and in CI:
+
+```text
+.nvmrc          # Node
+.bun-version    # Bun (when used)
+package.json    # packageManager/devEngines for pnpm and other tooling
+pnpm-lock.yaml
+```
+
+For local development, install [proto](https://moonrepo.dev/proto) once and run `proto install` in a repo to install its declared toolchain.
 
 **Shared configs:**
 
@@ -83,8 +92,8 @@ pnpm add -D oxlint oxfmt typescript
 
 ### Shared configs are live in CI
 
-CI does not run against the committed lockfile's devkit pin: `actions/node.setup`
-(the setup path of `node.verify.yml` **and** `cf.worker.deploy.yml`) runs
+CI does not run against the committed lockfile's devkit pin: `actions/toolchain.setup`
+(the setup path of `toolchain.verify.yml` and `cf.worker.deploy.yml`) runs
 `pnpm update @gingur/devkit` after its frozen install, re-resolving the
 dependency to whatever its **specifier** names on every run. The specifier is
 the policy knob:
@@ -112,7 +121,7 @@ is authoritative**. Repos without an `@gingur/devkit` dependency are untouched
 
 ### Versioning
 
-Pin to `@main`. This is the gingur consumer convention — single maintainer, single direction of change, so there's no benefit to maintaining version tags. Reproducibility lives on the consumer side via lockfile-pinned SHAs (e.g. `pnpm-lock.yaml` records the resolved commit when devkit is consumed as a git URL dep) — except the `@gingur/devkit` package dep itself in CI, which `node.setup` re-resolves to its specifier every run (see [Shared configs are live in CI](#shared-configs-are-live-in-ci)).
+Pin to `@main`. This is the gingur consumer convention — single maintainer, single direction of change, so there's no benefit to maintaining version tags. Reproducibility lives on the consumer side via lockfile-pinned SHAs (e.g. `pnpm-lock.yaml` records the resolved commit when devkit is consumed as a git URL dep) — except the `@gingur/devkit` package dep itself in CI, which `toolchain.setup` re-resolves to its specifier every run (see [Shared configs are live in CI](#shared-configs-are-live-in-ci)).
 
 Need a frozen reference point (paused upgrade, post-mortem snapshot)? Pin to a specific SHA: `gingur/devkit/...@<sha>`.
 
@@ -126,7 +135,7 @@ Pin by **trust in who can move the tag**:
   ```yaml
   uses: cloudflare/wrangler-action@v4 # Cloudflare (org)
   uses: Infisical/secrets-action@v1.0.16 # Infisical (org)
-  uses: pnpm/action-setup@v6 # pnpm (org)
+  uses: moonrepo/setup-toolchain@v0 # Moonrepo (org)
   uses: actions/checkout@v6 # GitHub
   ```
 
@@ -215,7 +224,7 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 
 | Goal                                             | Call                                                                 |
 | ------------------------------------------------ | -------------------------------------------------------------------- |
-| Verify (lint + typecheck + test) on PR           | `gingur/devkit/.github/workflows/node.verify.yml@main`               |
+| Verify (lint + typecheck + test + build) on PR   | `gingur/devkit/.github/workflows/toolchain.verify.yml@main`          |
 | Deploy to production on push                     | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main`          |
 | Per-PR preview deploy                            | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main`         |
 | Tear down preview on PR close                    | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
@@ -231,7 +240,7 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 
 | Workflow                    | `contents` | `id-token` | `pull-requests`                                                                  |
 | --------------------------- | ---------- | ---------- | -------------------------------------------------------------------------------- |
-| `node.verify`               | `read`     | —          | —                                                                                |
+| `toolchain.verify`          | `read`     | —          | —                                                                                |
 | `cf.worker.deploy`          | `read`     | `write`    | `write` (records version on source PR)                                           |
 | `cf.worker.preview`         | `read`     | `write`    | `write`                                                                          |
 | `cf.worker.preview.cleanup` | `read`     | `write`    | `write`                                                                          |
@@ -293,9 +302,8 @@ policy below — only operator-gated triggers ever reach it.
 - The `gh` CLI — preinstalled on GitHub-hosted images but **not** on local
   machines; used for runner registration and by workflow steps that shell out
   to it.
-- Node / pnpm are **not** prerequisites: the runner bundles its own runtime
-  for JS actions, and `actions/setup-node` / `pnpm/action-setup` maintain a
-  per-runner tool cache.
+- Node, pnpm, Bun, and other proto-managed tools are **not** prerequisites:
+  `actions/toolchain.setup` installs the repo-declared toolchain and caches it.
 
 ### Routing policy (public repos)
 

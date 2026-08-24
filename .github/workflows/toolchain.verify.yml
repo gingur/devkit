@@ -61,7 +61,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: gingur/devkit/actions/toolchain.setup@main
+      # Feature-branch pin is intentional while this action is being validated
+      # by dependent consumer PRs. Flip to @main before merging devkit #192.
+      - uses: gingur/devkit/actions/toolchain.setup@feat/node-verify-build-bun
         with:
           cwd: ${{ inputs.cwd }}
           node: ${{ inputs.node }}

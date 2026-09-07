@@ -76,11 +76,22 @@ export { default } from '@gingur/devkit/oxfmt';
 | `@gingur/devkit/lint-staged` | `lint-staged.config.js` | `oxfmt`, `oxlint` |
 | `@gingur/devkit/tsconfig`    | `tsconfig.base.json`    | `typescript`      |
 
-The lint-staged config hands **every** staged file to both tools rather than
-listing extensions, so the hook and a repo-wide `oxfmt --check` always agree on
-what is in scope. Each tool skips input it cannot parse — oxfmt leaves
-unrecognised files byte-identical, binaries included — so an allowlist buys
-nothing and drifts silently as the tools add support.
+The lint-staged config hands **every** staged file to both tools under a single
+`'*'` group rather than listing extensions, so the hook and a repo-wide
+`oxfmt --check` always agree on what is in scope. Both tools leave input they do
+not recognise byte-identical — binaries and lockfiles included — so an allowlist
+buys nothing and drifts silently as the tools add support. A file whose
+extension oxfmt _does_ recognise but cannot parse (malformed JSON, say) still
+fails the commit, which is the point.
+
+Two consequences worth knowing before you bump devkit:
+
+- oxfmt now reaches file types the old globs skipped — `.toml` most visibly,
+  where it strips column alignment in `wrangler.toml` — so expect a one-time
+  diff on the first commit that touches one.
+- Extending this config means **merging** commands into the `'*'` array. A
+  second glob overlaps `'*'` and lint-staged runs the two groups concurrently,
+  putting two writers on one file.
 
 These tools are **not** bundled — the configs reference them but consumers install
 them. They are declared as `peerDependencies` (so your package manager warns when

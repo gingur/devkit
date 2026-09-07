@@ -23,6 +23,11 @@ on:
         type: string
         required: false
         default: ''
+      format:
+        description: 'pnpm script to run for the format check. Empty skips it.'
+        type: string
+        required: false
+        default: ''
       lint:
         description: 'pnpm script to run for lint. Empty skips lint.'
         type: string
@@ -67,6 +72,10 @@ jobs:
           node: ${{ inputs.node }}
           pnpm: ${{ inputs.pnpm }}
           bun: ${{ inputs.bun }}
+
+      - name: Format
+        if: ${{ inputs.format != '' }}
+        run: pnpm ${{ inputs.format }}
 
       - name: Lint
         if: ${{ inputs.lint != '' }}

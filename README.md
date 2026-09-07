@@ -19,6 +19,9 @@ actions/             composite actions   — uses: gingur/devkit/actions/<name>@
 jobs:
   verify:
     uses: gingur/devkit/.github/workflows/toolchain.verify.yml@main
+    with:
+      # Opt in; defaults to '' so the check never appears without asking.
+      format: 'fmt:check'
 ```
 
 **Composite action:**
@@ -72,6 +75,15 @@ export { default } from '@gingur/devkit/oxfmt';
 | `@gingur/devkit/oxfmt`       | `oxfmt.config.mjs`      | `oxfmt`           |
 | `@gingur/devkit/lint-staged` | `lint-staged.config.js` | `oxfmt`, `oxlint` |
 | `@gingur/devkit/tsconfig`    | `tsconfig.base.json`    | `typescript`      |
+
+The lint-staged globs cover every extension the two tools support, so the hook
+and a repo-wide `oxfmt --check` agree on which files are in scope:
+
+| Handled by            | Extensions                                                                                      |
+| --------------------- | ----------------------------------------------------------------------------------------------- |
+| `oxfmt` + `oxlint`    | `js` `mjs` `cjs` `jsx` `ts` `mts` `cts` `tsx` `vue`                                              |
+| `oxlint` only         | `astro` `svelte`                                                                                 |
+| `oxfmt` only          | `json` `jsonc` `json5` `md` `mdx` `markdown` `yml` `yaml` `css` `scss` `less` `html` `htm` `toml` `graphql` `gql` |
 
 These tools are **not** bundled — the configs reference them but consumers install
 them. They are declared as `peerDependencies` (so your package manager warns when
@@ -224,7 +236,7 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 
 | Goal                                             | Call                                                                 |
 | ------------------------------------------------ | -------------------------------------------------------------------- |
-| Verify (lint + typecheck + test + build) on PR   | `gingur/devkit/.github/workflows/toolchain.verify.yml@main`          |
+| Verify (format + lint + typecheck + test + build) on PR | `gingur/devkit/.github/workflows/toolchain.verify.yml@main`   |
 | Deploy to production on push                     | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main`          |
 | Per-PR preview deploy                            | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main`         |
 | Tear down preview on PR close                    | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |

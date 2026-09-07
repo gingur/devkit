@@ -15,11 +15,11 @@ sessions and human contributors follow these. Human-facing usage docs live in
 
 A 3-tier identifier system. Pick the tier by _what kind of thing_ you're naming.
 
-| Tier                                                 | Convention                             | Examples                                                                                                          |
-| ---------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| **File names** (workflows, action dirs)              | `lowercase.dot.notation`               | `toolchain.verify.yml`, `actions/toolchain.setup/`, `cf.worker.preview.yml`, `infisical.secrets.scan.yml`        |
-| **Identifiers** (inputs, job ids, step ids, outputs) | `camelCase`, single word when possible | `deploy`, `worker`, `domain`, `cfZone`                                                                            |
-| **Env vars & secrets**                               | `SCREAMING_SNAKE_CASE`                 | `CF_API_TOKEN`, `CF_ACCOUNT_ID`                                                                                   |
+| Tier                                                 | Convention                             | Examples                                                                                                  |
+| ---------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **File names** (workflows, action dirs)              | `lowercase.dot.notation`               | `toolchain.verify.yml`, `actions/toolchain.setup/`, `cf.worker.preview.yml`, `infisical.secrets.scan.yml` |
+| **Identifiers** (inputs, job ids, step ids, outputs) | `camelCase`, single word when possible | `deploy`, `worker`, `domain`, `cfZone`                                                                    |
+| **Env vars & secrets**                               | `SCREAMING_SNAKE_CASE`                 | `CF_API_TOKEN`, `CF_ACCOUNT_ID`                                                                           |
 
 ### File names: `<provider>.<service>.<action…>`
 

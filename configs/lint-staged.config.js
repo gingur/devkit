@@ -6,10 +6,13 @@
 // hook waved through. That divergence is what a shared config exists to prevent.
 //
 // Safe because both tools ignore input they do not recognise, leaving it
-// byte-identical -- binaries, lockfiles and symlink targets included. A file
-// whose extension oxfmt does recognise but whose contents it cannot parse
-// (malformed JSON, a UTF-16 payload) still fails the commit, which is the
-// correct outcome and not something the flags below suppress.
+// byte-identical -- binaries and lockfiles included. A file whose extension
+// oxfmt does recognise but whose contents it cannot parse (malformed JSON, a
+// UTF-16 payload) still fails the commit, which is the correct outcome and not
+// something the flags below suppress.
+//
+// One exception, latent today: oxfmt follows a symlink and rewrites its target,
+// which lint-staged will not re-stage. No repo in the fleet tracks a symlink.
 //
 // Both need --no-error-on-unmatched-pattern, which despite the name is not an
 // edge case: each tool exits non-zero when *nothing* it was handed is

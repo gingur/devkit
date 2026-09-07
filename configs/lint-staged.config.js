@@ -1,22 +1,25 @@
-// Globs track what oxfmt and oxlint can each handle, not what any one consumer
-// happens to have. A file type the repo-wide `oxfmt --check` rejects but the
-// hook never sees is a gate that only fails in CI.
+// Hand both tools everything staged rather than curating an extension
+// allowlist. oxfmt's detection is a linguist-style table keyed on full filename
+// as well as extension -- it formats `.webmanifest`, `.pcss`, `.code-workspace`
+// and bare `.prettierrc`, among others -- so any allowlist drifts from it
+// silently, leaving file types that a repo-wide `oxfmt --check` rejects but the
+// hook waved through. That divergence is what a shared config exists to prevent.
 //
-// Verified against oxfmt 0.58 / oxlint 1.73:
-//   both      js mjs cjs jsx ts mts cts tsx vue
-//   lint only astro svelte          (oxfmt has no parser for these)
-//   fmt only  json jsonc json5 md mdx markdown yml yaml css scss less
-//             html htm toml graphql gql
-// Not supported by either: sass (indented syntax), xml.
+// Safe because each tool ignores input it cannot parse: given a mixed batch,
+// oxfmt formats only what it recognises and leaves the rest byte-identical,
+// binaries included, and oxlint reports the same diagnostics it would have
+// reported alone.
 //
-// `--no-error-on-unmatched-pattern` because oxfmt exits 2 when every path it is
-// handed is excluded by an ignore file, which a commit confined to an ignored
-// directory produces. That is a clean commit, not a failure.
+// Both need --no-error-on-unmatched-pattern: each exits non-zero when every
+// path it was handed is excluded by an ignore file, which a commit confined to
+// an ignored directory (`dist/`, `coverage/`) produces. That is a clean commit,
+// not a failure.
 const FORMAT = 'oxfmt --no-error-on-unmatched-pattern';
-const LINT = 'oxlint --fix';
+const LINT = 'oxlint --fix --no-error-on-unmatched-pattern';
 
 export default {
-  '*.{js,mjs,cjs,jsx,ts,mts,cts,tsx,vue}': [FORMAT, LINT],
-  '*.{astro,svelte}': [LINT],
-  '*.{json,jsonc,json5,md,mdx,markdown,yml,yaml,css,scss,less,html,htm,toml,graphql,gql}': [FORMAT],
+  // A single group, so formatting finishes before linting starts on the same
+  // file. Separate globs would put them in different task groups, which
+  // lint-staged runs concurrently -- two writers on one file.
+  '*': [FORMAT, LINT],
 };

@@ -76,14 +76,11 @@ export { default } from '@gingur/devkit/oxfmt';
 | `@gingur/devkit/lint-staged` | `lint-staged.config.js` | `oxfmt`, `oxlint` |
 | `@gingur/devkit/tsconfig`    | `tsconfig.base.json`    | `typescript`      |
 
-The lint-staged globs cover every extension the two tools support, so the hook
-and a repo-wide `oxfmt --check` agree on which files are in scope:
-
-| Handled by            | Extensions                                                                                      |
-| --------------------- | ----------------------------------------------------------------------------------------------- |
-| `oxfmt` + `oxlint`    | `js` `mjs` `cjs` `jsx` `ts` `mts` `cts` `tsx` `vue`                                              |
-| `oxlint` only         | `astro` `svelte`                                                                                 |
-| `oxfmt` only          | `json` `jsonc` `json5` `md` `mdx` `markdown` `yml` `yaml` `css` `scss` `less` `html` `htm` `toml` `graphql` `gql` |
+The lint-staged config hands **every** staged file to both tools rather than
+listing extensions, so the hook and a repo-wide `oxfmt --check` always agree on
+what is in scope. Each tool skips input it cannot parse — oxfmt leaves
+unrecognised files byte-identical, binaries included — so an allowlist buys
+nothing and drifts silently as the tools add support.
 
 These tools are **not** bundled — the configs reference them but consumers install
 them. They are declared as `peerDependencies` (so your package manager warns when
@@ -234,14 +231,14 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 
 ## Reusable workflows reference
 
-| Goal                                             | Call                                                                 |
-| ------------------------------------------------ | -------------------------------------------------------------------- |
-| Verify (format + lint + typecheck + test + build) on PR | `gingur/devkit/.github/workflows/toolchain.verify.yml@main`   |
-| Deploy to production on push                     | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main`          |
-| Per-PR preview deploy                            | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main`         |
-| Tear down preview on PR close                    | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
-| Roll back production to a prior version (manual) | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main`        |
-| Scan a PR's commits for leaked secrets           | `gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main`    |
+| Goal                                                          | Call                                                                 |
+| ------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Verify (lint + typecheck + test + build; format opt-in) on PR | `gingur/devkit/.github/workflows/toolchain.verify.yml@main`          |
+| Deploy to production on push                                  | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main`          |
+| Per-PR preview deploy                                         | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main`         |
+| Tear down preview on PR close                                 | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
+| Roll back production to a prior version (manual)              | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main`        |
+| Scan a PR's commits for leaked secrets                        | `gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main`    |
 
 > Deploy, rollback, verify, and secret-scan accept an
 > optional `runner` input (a runner label, default `ubuntu-latest`). See
@@ -250,14 +247,14 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 
 ### Required permissions
 
-| Workflow                    | `contents` | `id-token` | `pull-requests`                                                                  |
-| --------------------------- | ---------- | ---------- | -------------------------------------------------------------------------------- |
-| `toolchain.verify`          | `read`     | —          | —                                                                                |
-| `cf.worker.deploy`          | `read`     | `write`    | `write` (records version on source PR)                                           |
-| `cf.worker.preview`         | `read`     | `write`    | `write`                                                                          |
-| `cf.worker.preview.cleanup` | `read`     | `write`    | `write`                                                                          |
-| `cf.worker.rollback`        | `read`     | `write`    | —                                                                                |
-| `infisical.secrets.scan`    | `read`     | —          | —                                                                                |
+| Workflow                    | `contents` | `id-token` | `pull-requests`                        |
+| --------------------------- | ---------- | ---------- | -------------------------------------- |
+| `toolchain.verify`          | `read`     | —          | —                                      |
+| `cf.worker.deploy`          | `read`     | `write`    | `write` (records version on source PR) |
+| `cf.worker.preview`         | `read`     | `write`    | `write`                                |
+| `cf.worker.preview.cleanup` | `read`     | `write`    | `write`                                |
+| `cf.worker.rollback`        | `read`     | `write`    | —                                      |
+| `infisical.secrets.scan`    | `read`     | —          | —                                      |
 
 ## Self-hosted runner (local)
 

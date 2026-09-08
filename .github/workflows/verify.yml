@@ -6,13 +6,14 @@ name: Verify
 # merges — there is no staging step between this repo and production. Keep the
 # `actions` guard cheap and network-free so it can't false-fail a consumer's
 # deploy; `configs` needs an install, so it runs as its own job.
+#
+# No `paths:` filter. `fmt:check` covers the whole repo, so any filter narrower
+# than that lets a docs-only PR merge unchecked and surface its drift later as a
+# red build on someone else's unrelated change. The repo is ~30 files and both
+# jobs are cheap; running them always is simpler than keeping a filter in sync
+# with what the checks actually read.
 on:
   pull_request:
-    paths:
-      - 'actions/**'
-      - 'configs/**'
-      - 'package.json'
-      - '.github/workflows/**'
 
 permissions:
   contents: read
@@ -36,8 +37,8 @@ jobs:
           for f in "${files[@]}"; do bash -n "$f"; done
 
   # Dogfoods the reusable workflow, so the `format` input is exercised on every
-  # PR that touches what it gates. devkit declares no runtime version files of
-  # its own — it is a config package, not an app — so the versions are explicit.
+  # PR. devkit declares no runtime version files of its own — it is a config
+  # package, not an app — so the versions are explicit.
   configs:
     name: Configs
     uses: ./.github/workflows/toolchain.verify.yml

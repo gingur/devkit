@@ -19,6 +19,9 @@ actions/             composite actions   — uses: gingur/devkit/actions/<name>@
 jobs:
   verify:
     uses: gingur/devkit/.github/workflows/toolchain.verify.yml@main
+    with:
+      # Opt in; defaults to '' so the check never appears without asking.
+      format: 'fmt:check'
 ```
 
 **Composite action:**
@@ -72,6 +75,23 @@ export { default } from '@gingur/devkit/oxfmt';
 | `@gingur/devkit/oxfmt`       | `oxfmt.config.mjs`      | `oxfmt`           |
 | `@gingur/devkit/lint-staged` | `lint-staged.config.js` | `oxfmt`, `oxlint` |
 | `@gingur/devkit/tsconfig`    | `tsconfig.base.json`    | `typescript`      |
+
+The lint-staged config hands **every** staged file to both tools under a single
+`'*'` group rather than listing extensions, so the hook and a repo-wide
+`oxfmt --check` always agree on what is in scope. Both tools leave input they do
+not recognise byte-identical — binaries and lockfiles included — so an allowlist
+buys nothing and drifts silently as the tools add support. A file whose
+extension oxfmt _does_ recognise but cannot parse (malformed JSON, say) still
+fails the commit, which is the point.
+
+Two consequences worth knowing before you bump devkit:
+
+- oxfmt now reaches file types the old globs skipped — `.toml` most visibly,
+  where it strips column alignment in `wrangler.toml` — so expect a one-time
+  diff on the first commit that touches one.
+- Extending this config means **merging** commands into the `'*'` array. A
+  second glob overlaps `'*'` and lint-staged runs the two groups concurrently,
+  putting two writers on one file.
 
 These tools are **not** bundled — the configs reference them but consumers install
 them. They are declared as `peerDependencies` (so your package manager warns when
@@ -222,14 +242,14 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 
 ## Reusable workflows reference
 
-| Goal                                             | Call                                                                 |
-| ------------------------------------------------ | -------------------------------------------------------------------- |
-| Verify (lint + typecheck + test + build) on PR   | `gingur/devkit/.github/workflows/toolchain.verify.yml@main`          |
-| Deploy to production on push                     | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main`          |
-| Per-PR preview deploy                            | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main`         |
-| Tear down preview on PR close                    | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
-| Roll back production to a prior version (manual) | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main`        |
-| Scan a PR's commits for leaked secrets           | `gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main`    |
+| Goal                                                          | Call                                                                 |
+| ------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Verify (lint + typecheck + test + build; format opt-in) on PR | `gingur/devkit/.github/workflows/toolchain.verify.yml@main`          |
+| Deploy to production on push                                  | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main`          |
+| Per-PR preview deploy                                         | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main`         |
+| Tear down preview on PR close                                 | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
+| Roll back production to a prior version (manual)              | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main`        |
+| Scan a PR's commits for leaked secrets                        | `gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main`    |
 
 > Deploy, rollback, verify, and secret-scan accept an
 > optional `runner` input (a runner label, default `ubuntu-latest`). See
@@ -238,14 +258,14 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 
 ### Required permissions
 
-| Workflow                    | `contents` | `id-token` | `pull-requests`                                                                  |
-| --------------------------- | ---------- | ---------- | -------------------------------------------------------------------------------- |
-| `toolchain.verify`          | `read`     | —          | —                                                                                |
-| `cf.worker.deploy`          | `read`     | `write`    | `write` (records version on source PR)                                           |
-| `cf.worker.preview`         | `read`     | `write`    | `write`                                                                          |
-| `cf.worker.preview.cleanup` | `read`     | `write`    | `write`                                                                          |
-| `cf.worker.rollback`        | `read`     | `write`    | —                                                                                |
-| `infisical.secrets.scan`    | `read`     | —          | —                                                                                |
+| Workflow                    | `contents` | `id-token` | `pull-requests`                        |
+| --------------------------- | ---------- | ---------- | -------------------------------------- |
+| `toolchain.verify`          | `read`     | —          | —                                      |
+| `cf.worker.deploy`          | `read`     | `write`    | `write` (records version on source PR) |
+| `cf.worker.preview`         | `read`     | `write`    | `write`                                |
+| `cf.worker.preview.cleanup` | `read`     | `write`    | `write`                                |
+| `cf.worker.rollback`        | `read`     | `write`    | —                                      |
+| `infisical.secrets.scan`    | `read`     | —          | —                                      |
 
 ## Self-hosted runner (local)
 

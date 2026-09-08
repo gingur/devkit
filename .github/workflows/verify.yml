@@ -1,15 +1,19 @@
 name: Verify
 # devkit's own CI.
 #
-# Everything under actions/ ships to every enrolled repo on `@main`, so a
-# regression here lands fleet-wide the moment it merges — there is no staging
-# step between this repo and production. Keep the guards here cheap and
-# network-free so they can't false-fail a consumer's deploy.
+# Everything under actions/, configs/ and .github/workflows/ ships to every
+# enrolled repo on `@main`, so a regression here lands fleet-wide the moment it
+# merges — there is no staging step between this repo and production. Keep the
+# `actions` guard cheap and network-free so it can't false-fail a consumer's
+# deploy; `configs` needs an install, so it runs as its own job.
+#
+# No `paths:` filter. `fmt:check` covers the whole repo, so any filter narrower
+# than that lets a docs-only PR merge unchecked and surface its drift later as a
+# red build on someone else's unrelated change. The repo is ~30 files and both
+# jobs are cheap; running them always is simpler than keeping a filter in sync
+# with what the checks actually read.
 on:
   pull_request:
-    paths:
-      - 'actions/**'
-      - '.github/workflows/verify.yml'
 
 permissions:
   contents: read
@@ -31,3 +35,17 @@ jobs:
           mapfile -t files < <(git ls-files 'actions/**/*.sh')
           printf 'checking %s shell file(s)\n' "${#files[@]}"
           for f in "${files[@]}"; do bash -n "$f"; done
+
+  # Dogfoods the reusable workflow, so the `format` input is exercised on every
+  # PR. devkit declares no runtime version files of its own — it is a config
+  # package, not an app — so the versions are explicit.
+  configs:
+    name: Configs
+    uses: ./.github/workflows/toolchain.verify.yml
+    with:
+      node: '22.23.2'
+      pnpm: '10.33.0'
+      format: 'fmt:check'
+      typecheck: ''
+      test: ''
+      build: ''

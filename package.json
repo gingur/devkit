@@ -23,7 +23,7 @@
   ],
   "peerDependencies": {
     "oxfmt": "^0.58",
-    "oxlint": "^1",
+    "oxlint": "^1.60",
     "typescript": "^6 || ^7"
   },
   "devDependencies": {

@@ -27,7 +27,7 @@ on:
         description: 'pnpm script to run for the format check. Empty skips it.'
         type: string
         required: false
-        default: ''
+        default: 'fmt:check'
       lint:
         description: 'pnpm script to run for lint. Empty skips lint.'
         type: string

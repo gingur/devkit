@@ -19,9 +19,15 @@ actions/             composite actions   — uses: gingur/devkit/actions/<name>@
 jobs:
   verify:
     uses: gingur/devkit/.github/workflows/toolchain.verify.yml@main
-    with:
-      # Opt in; defaults to '' so the check never appears without asking.
-      format: 'fmt:check'
+```
+
+Every stage defaults to the conventional script name — `fmt:check`, `lint`,
+`typecheck`, `test`, `build` — and runs in that order. Pass `''` to skip one:
+
+```yaml
+with:
+  format: '' # no formatter in this repo yet
+  test: ''
 ```
 
 **Composite action:**
@@ -242,14 +248,14 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 
 ## Reusable workflows reference
 
-| Goal                                                          | Call                                                                 |
-| ------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Verify (lint + typecheck + test + build; format opt-in) on PR | `gingur/devkit/.github/workflows/toolchain.verify.yml@main`          |
-| Deploy to production on push                                  | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main`          |
-| Per-PR preview deploy                                         | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main`         |
-| Tear down preview on PR close                                 | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
-| Roll back production to a prior version (manual)              | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main`        |
-| Scan a PR's commits for leaked secrets                        | `gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main`    |
+| Goal                                                    | Call                                                                 |
+| ------------------------------------------------------- | -------------------------------------------------------------------- |
+| Verify (format + lint + typecheck + test + build) on PR | `gingur/devkit/.github/workflows/toolchain.verify.yml@main`          |
+| Deploy to production on push                            | `gingur/devkit/.github/workflows/cf.worker.deploy.yml@main`          |
+| Per-PR preview deploy                                   | `gingur/devkit/.github/workflows/cf.worker.preview.yml@main`         |
+| Tear down preview on PR close                           | `gingur/devkit/.github/workflows/cf.worker.preview.cleanup.yml@main` |
+| Roll back production to a prior version (manual)        | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main`        |
+| Scan a PR's commits for leaked secrets                  | `gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main`    |
 
 > Deploy, rollback, verify, and secret-scan accept an
 > optional `runner` input (a runner label, default `ubuntu-latest`). See

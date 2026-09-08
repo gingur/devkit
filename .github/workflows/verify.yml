@@ -36,8 +36,8 @@ jobs:
           printf 'checking %s shell file(s)\n' "${#files[@]}"
           for f in "${files[@]}"; do bash -n "$f"; done
 
-  # Dogfoods the reusable workflow, so the `format` input is exercised on every
-  # PR. devkit declares no runtime version files of its own — it is a config
+  # Dogfoods the reusable workflow, so its defaults are exercised on every PR.
+  # devkit declares no runtime version files of its own — it is a config
   # package, not an app — so the versions are explicit.
   configs:
     name: Configs
@@ -45,7 +45,6 @@ jobs:
     with:
       node: '22.23.2'
       pnpm: '10.33.0'
-      format: 'fmt:check'
       typecheck: ''
       test: ''
       build: ''

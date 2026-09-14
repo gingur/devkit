@@ -32,6 +32,10 @@ on:
         type: string
         required: false
         default: ''
+      infisicalDomain:
+        description: 'Infisical instance URL. The private origin for the Gingur box vault; https://app.infisical.com for Infisical Cloud.'
+        type: string
+        required: true
       infisicalProject:
         description: 'Infisical project slug (e.g., gingur)'
         type: string
@@ -93,11 +97,16 @@ jobs:
         shell: bash
         run: ${{ inputs.build }}
 
-      # CF_API_TOKEN / CF_ACCOUNT_ID live only in Infisical (single source of truth).
+      # The Cloudflare credentials live in Infisical and nowhere else, under their
+      # canonical names. There is no alias cell renaming them per repository:
+      # Infisical expands a secret reference with the CALLER's authority, so an
+      # identity scoped to an alias path cannot follow the reference into the
+      # path holding the value. One definition, read directly.
       # To rotate them, see the "Secret rotation" runbook in the README.
       - name: Fetch CF credentials
         uses: gingur/devkit/actions/infisical.secrets.fetch@main
         with:
+          domain: ${{ inputs.infisicalDomain }}
           identity: ${{ inputs.infisicalIdentity }}
           project: ${{ inputs.infisicalProject }}
           env: ${{ inputs.infisicalEnv }}
@@ -110,8 +119,8 @@ jobs:
           cwd: ${{ inputs.cwd }}
           env: ${{ inputs.env }}
           worker: ${{ inputs.worker }}
-          token: ${{ env.CF_API_TOKEN }}
-          account: ${{ env.CF_ACCOUNT_ID }}
+          token: ${{ env.CLOUDFLARE_API_TOKEN }}
+          account: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
 
       # On a public push (squash-merged PR), record the deployed version on the
       # source PR so it doubles as a rollback index. Skipped for preview deploys

@@ -12,6 +12,15 @@ on:
       cfZone:
         type: string
         required: true
+      runner:
+        description: 'Runner label. A self-hosted runner is only reachable for same-repository pull requests; see the job guard below.'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+      infisicalDomain:
+        description: 'Infisical instance URL. The private origin for the Gingur box vault; https://app.infisical.com for Infisical Cloud.'
+        type: string
+        required: true
       infisicalProject:
         type: string
         required: true
@@ -38,8 +47,14 @@ permissions:
 
 jobs:
   cleanup:
-    # PR-triggered: always GitHub-hosted; never route to a self-hosted runner (public repo)
-    runs-on: ubuntu-latest
+    # A fork pull request must never allocate a self-hosted runner: on a public
+    # repository that would execute contributor code on the operator's machine.
+    # Nothing is lost by skipping it — GitHub already refuses `id-token: write`
+    # and passes no secrets to fork-originated runs, so the Infisical fetch in
+    # this job could never have succeeded for a fork. Skipping fails fast
+    # instead of failing inside an allocated runner.
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ${{ inputs.runner }}
     # Match the preview deploy's GitHub Environment so teardown authenticates to
     # Infisical under the same OIDC subject: ...:environment:preview.
     environment: preview
@@ -50,6 +65,7 @@ jobs:
       - name: Fetch CF credentials
         uses: gingur/devkit/actions/infisical.secrets.fetch@main
         with:
+          domain: ${{ inputs.infisicalDomain }}
           identity: ${{ inputs.infisicalIdentity }}
           project: ${{ inputs.infisicalProject }}
           env: ${{ inputs.infisicalEnv }}
@@ -59,16 +75,16 @@ jobs:
         uses: gingur/devkit/actions/cf.worker.domain@main
         with:
           mode: detach
-          token: ${{ env.CF_API_TOKEN }}
-          account: ${{ env.CF_ACCOUNT_ID }}
+          token: ${{ env.CLOUDFLARE_API_TOKEN }}
+          account: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
           zone: ${{ inputs.cfZone }}
           hostname: ${{ env.HOST }}
 
       - name: Delete preview worker
         uses: cloudflare/wrangler-action@v4
         with:
-          apiToken: ${{ env.CF_API_TOKEN }}
-          accountId: ${{ env.CF_ACCOUNT_ID }}
+          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
           command: delete --name ${{ env.WORKER }}
 
       - name: Remove preview comment

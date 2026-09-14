@@ -19,7 +19,7 @@ A 3-tier identifier system. Pick the tier by _what kind of thing_ you're naming.
 | ---------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | **File names** (workflows, action dirs)              | `lowercase.dot.notation`               | `toolchain.verify.yml`, `actions/toolchain.setup/`, `cf.worker.preview.yml`, `infisical.secrets.scan.yml` |
 | **Identifiers** (inputs, job ids, step ids, outputs) | `camelCase`, single word when possible | `deploy`, `worker`, `domain`, `cfZone`                                                                    |
-| **Env vars & secrets**                               | `SCREAMING_SNAKE_CASE`                 | `CF_API_TOKEN`, `CF_ACCOUNT_ID`                                                                           |
+| **Env vars & secrets**                               | `SCREAMING_SNAKE_CASE`                 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`                                                           |
 
 ### File names: `<provider>.<service>.<action…>`
 
@@ -55,9 +55,15 @@ takes extra dots for compound lifecycles (4+: `cf.worker.preview.cleanup`).
 
 ### Env vars & secrets: SCREAMING_SNAKE_CASE
 
-- Always. Provider-prefixed (`CF_API_TOKEN`, `CF_ACCOUNT_ID`).
+- Always. Provider-prefixed, and spelled the way the provider spells itself
+  (`CLOUDFLARE_API_TOKEN`, not `CF_API_TOKEN`).
+- The name is whatever the secret is called at its canonical path in Infisical,
+  because that is the name the fetch exports. Renaming it here would need an
+  alias cell in the vault, which is a second definition of one value — and one
+  an identity narrowed to its own path could not read anyway, since Infisical
+  expands references with the caller's authority.
 - Secrets are fetched into the env by `infisical.secrets.fetch` (`export-type: env`)
-  and read as `${{ env.CF_API_TOKEN }}` — never hardcoded, never echoed.
+  and read as `${{ env.CLOUDFLARE_API_TOKEN }}` — never hardcoded, never echoed.
 
 ---
 

@@ -2,6 +2,9 @@ name: 'Fetch Infisical secrets'
 description: 'Fetch secrets from Infisical via GitHub OIDC. Defaults to exporting them to the job environment (export: env, job-wide); set export: file to write a dotenv file at fileOutputPath instead, for callers that scope individual secrets to a single step rather than exporting job-wide. Requires id-token: write in the calling job.'
 
 inputs:
+  domain:
+    description: 'Infisical instance URL. Required and never defaulted: silently falling back to Infisical Cloud would send an OIDC token to the wrong vault and fail in a way that looks like a claim mismatch.'
+    required: true
   identity:
     description: 'Infisical machine identity UUID with OIDC trust for this repo'
     required: true
@@ -36,6 +39,7 @@ runs:
       uses: Infisical/secrets-action@v1.0.16
       with:
         method: oidc
+        domain: ${{ inputs.domain }}
         identity-id: ${{ inputs.identity }}
         oidc-audience: ${{ inputs.audience }}
         project-slug: ${{ inputs.project }}

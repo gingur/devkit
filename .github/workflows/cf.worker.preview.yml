@@ -31,6 +31,15 @@ on:
         type: string
         required: false
         default: ''
+      runner:
+        description: 'Runner label. A self-hosted runner is only reachable for same-repository pull requests; see the job guard below.'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+      infisicalDomain:
+        description: 'Infisical instance URL. The private origin for the Gingur box vault; https://app.infisical.com for Infisical Cloud.'
+        type: string
+        required: true
       infisicalProject:
         type: string
         required: true
@@ -56,14 +65,23 @@ permissions:
 
 jobs:
   deploy:
+    # A fork pull request must never allocate a self-hosted runner: on a public
+    # repository that would execute contributor code on the operator's machine.
+    # Nothing is lost by skipping it — GitHub already refuses `id-token: write`
+    # and passes no secrets to fork-originated runs, so the Infisical fetch in
+    # this job could never have succeeded for a fork. Skipping fails fast
+    # instead of failing inside an allocated runner.
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     uses: ./.github/workflows/cf.worker.deploy.yml
     with:
+      runner: ${{ inputs.runner }}
       env: preview
       worker: ${{ inputs.app }}-pr-${{ github.event.pull_request.number }}
       cwd: ${{ inputs.cwd }}
       build: ${{ inputs.build }}
       node: ${{ inputs.node }}
       pnpm: ${{ inputs.pnpm }}
+      infisicalDomain: ${{ inputs.infisicalDomain }}
       infisicalProject: ${{ inputs.infisicalProject }}
       infisicalEnv: ${{ inputs.infisicalEnv }}
       infisicalPath: ${{ inputs.infisicalPath }}
@@ -72,8 +90,14 @@ jobs:
 
   domain:
     needs: deploy
-    # PR-triggered: always GitHub-hosted; never route to a self-hosted runner (public repo)
-    runs-on: ubuntu-latest
+    # A fork pull request must never allocate a self-hosted runner: on a public
+    # repository that would execute contributor code on the operator's machine.
+    # Nothing is lost by skipping it — GitHub already refuses `id-token: write`
+    # and passes no secrets to fork-originated runs, so the Infisical fetch in
+    # this job could never have succeeded for a fork. Skipping fails fast
+    # instead of failing inside an allocated runner.
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ${{ inputs.runner }}
     # Same GitHub Environment as the deploy job, so the whole preview lifecycle
     # authenticates to Infisical under one OIDC subject: ...:environment:preview.
     environment: preview
@@ -88,6 +112,7 @@ jobs:
       - name: Fetch CF credentials
         uses: gingur/devkit/actions/infisical.secrets.fetch@main
         with:
+          domain: ${{ inputs.infisicalDomain }}
           identity: ${{ inputs.infisicalIdentity }}
           project: ${{ inputs.infisicalProject }}
           env: ${{ inputs.infisicalEnv }}
@@ -97,8 +122,8 @@ jobs:
         uses: gingur/devkit/actions/cf.worker.domain@main
         with:
           mode: attach
-          token: ${{ env.CF_API_TOKEN }}
-          account: ${{ env.CF_ACCOUNT_ID }}
+          token: ${{ env.CLOUDFLARE_API_TOKEN }}
+          account: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
           zone: ${{ inputs.cfZone }}
           hostname: ${{ env.HOST }}
           service: ${{ env.WORKER }}

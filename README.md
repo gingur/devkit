@@ -191,7 +191,9 @@ Reusable workflows and actions only accept `production | preview` for the `envir
 
 ## Secret rotation
 
-Infisical is the single source of truth for deploy credentials. Rotate in **one place** and it propagates to every consumer on the next OIDC fetch — no per-repo secrets, no commits, no PRs. The `cf.worker.deploy.yml` workflow fetches `CF_API_TOKEN` / `CF_ACCOUNT_ID` from Infisical at deploy time, so consumers never store them.
+Infisical is the single source of truth for deploy credentials. Rotate in **one place** and it propagates to every consumer on the next OIDC fetch — no per-repo secrets, no commits, no PRs. The `cf.worker.deploy.yml` workflow fetches `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` from Infisical at deploy time, so consumers never store them.
+
+Those are the credential's **canonical** names, read from the one path that holds it. There is deliberately no per-repository alias cell renaming it to something shorter: Infisical expands a secret reference using the **caller's** authority, so an identity narrowed to an alias path cannot follow the reference into the path that holds the value — and the resulting `403` fails the whole fetch, not just that key. Narrowing therefore lives in the identity's permissions, not in a second copy of the name.
 
 When rotating a Cloudflare API token (annual, or on compromise / personnel change):
 
@@ -371,6 +373,35 @@ local ↔ hosted is a repo-variable change with no commit:
 gh variable delete RUNNER --repo gingur/<repo>   # back to GitHub-hosted
 ```
 
+### Private Infisical, and what that costs
+
+`infisicalDomain` is required on every workflow that fetches secrets, and has no
+default. A silent fallback to Infisical Cloud would send the OIDC token to the
+wrong vault and fail as what looks like a claim mismatch — an expensive thing to
+debug. Set it once as a repository variable:
+
+```bash
+gh variable set INFISICAL_DOMAIN --repo gingur/<repo> --body http://127.0.0.1:8091
+```
+
+A **private** Infisical origin is only reachable from a self-hosted runner, so
+`runner` and `infisicalDomain` move together. That has one consequence worth
+stating plainly: **preview deploys now depend on the runner's host being up.**
+Production deploys already did.
+
+It has a second, sharper one. On a public repository a fork pull request must
+never allocate a self-hosted runner, or contributor code executes on the
+operator's machine. Every PR-triggered job here is therefore guarded:
+
+```yaml
+if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+```
+
+Nothing is lost. GitHub already refuses `id-token: write` and passes no secrets
+to fork-originated runs, so those jobs could never have fetched a credential;
+the guard makes them skip instead of failing inside an allocated runner. Fork
+pull requests get no preview — same as before, one step earlier.
+
 ### Repo settings hardening
 
 In each repo that routes to `local`: **Settings → Actions → General → Fork
@@ -422,9 +453,11 @@ jobs:
       app: <app>
       domain: <your-domain>
       cfZone: <zone-id>
+      runner: ${{ vars.RUNNER }} # self-hosted only reaches a private Infisical; see below
+      infisicalDomain: ${{ vars.INFISICAL_DOMAIN }}
       infisicalProject: <project-slug>
       infisicalEnv: <env-slug> # where the CF token lives (often "public")
-      infisicalPath: /<app>
+      infisicalPath: /shared/cloudflare/account # the canonical path, read directly
       infisicalIdentity: <preview-identity-uuid> # see note below — NOT the production identity
     secrets: inherit
 ```
@@ -446,9 +479,11 @@ jobs:
       app: <app>
       domain: <your-domain>
       cfZone: <zone-id>
+      runner: ${{ vars.RUNNER }}
+      infisicalDomain: ${{ vars.INFISICAL_DOMAIN }}
       infisicalProject: <project-slug>
       infisicalEnv: <env-slug>
-      infisicalPath: /<app>
+      infisicalPath: /shared/cloudflare/account
       infisicalIdentity: <preview-identity-uuid> # see note below — NOT the production identity
     secrets: inherit
 ```
@@ -512,6 +547,7 @@ jobs:
     uses: gingur/devkit/.github/workflows/cf.worker.rollback.yml@main
     with:
       version: ${{ inputs.version }}
+      infisicalDomain: ${{ vars.INFISICAL_DOMAIN }}
       infisicalProject: <your-project-slug>
       infisicalEnv: public
       infisicalPath: <your-secret-path>

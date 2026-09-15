@@ -73,8 +73,19 @@ takes extra dots for compound lifecycles (4+: `cf.worker.preview.cleanup`).
 .github/workflows/   reusable workflows — uses: gingur/devkit/.github/workflows/<name>.yml@main
 actions/             composite actions  — uses: gingur/devkit/actions/<name>@main
 configs/             shared tool configs (oxlint, oxfmt, tsconfig, …)
+bin/                 the `devkit` CLI — the local half of the same contract
 ```
 
+- **`bin/` ships as source, never built.** Consumers install devkit as a git
+  dependency (`github:gingur/devkit#main`), so whatever is committed is what
+  runs. Plain `.mjs` with a shebang; no bundler, no `prepare` script — adding an
+  install lifecycle would force consumers into a pnpm `allowBuilds` entry.
+- **Nothing invokes a managed tool by bare name.** oxlint, oxfmt, lint-staged
+  and husky are devkit's `dependencies`, so under pnpm they are absent from a
+  consumer's `node_modules/.bin`. Every call goes through `bin/tools.mjs`, which
+  resolves them from devkit's own tree. A bare `oxlint` passes devkit's own CI
+  (where it _is_ linked) and fails for every consumer — `bin/tools.test.mjs`
+  exists to catch exactly that.
 - **Workflows are thin glue** over single-purpose composite actions. Logic that's
   reused across workflows is extracted to a composite so it lives **once**.
 - **One concern per action.** If a workflow grows conditionals for a second
@@ -187,9 +198,11 @@ future `#semver:` tag → range-bounded. No-op when the dep is absent. Local dev
 catches up via `pnpm update @gingur/devkit`; **CI is authoritative**.
 
 **Working rule:** shared-config changes land backward-compatible, or roll out
-fleet-wide the same day. "Backward-compatible" includes tool-version floors
-(peerDependencies) — consumer binaries (e.g. vp-bundled oxlint/oxfmt) may lag
-devkit's floor.
+fleet-wide the same day. Tool versions are no longer a floor to reason about for
+oxlint and oxfmt — devkit owns them as dependencies, so bumping devkit bumps the
+tool. `typescript` is still a peer (consumers run their own `tsc`), and a
+consumer that deliberately pins a tool as its own devDependency wins in its
+`.bin` for direct invocations.
 
 ### Required permissions
 
@@ -255,7 +268,12 @@ Copy-paste preview + cleanup workflow examples live in
 
 ### Pre-commit (husky)
 
-Consumers wire a husky `pre-commit` hook that runs `lint-staged` and
+Consumers wire a husky `pre-commit` hook that runs `devkit staged` and
 `infisical scan git-changes --staged` (shared `configs/infisical-scan.toml`).
 Requires the `infisical` CLI on PATH. CI (`infisical.secrets.scan.yml`) is the
 enforced backstop since `--no-verify` skips the hook.
+
+Husky is installed by `devkit hooks install` wired to a `prepare` script, never
+by a devkit lifecycle. `devkit` resolves inside the hook because husky's `_/h`
+wrapper prepends `node_modules/.bin` to PATH — verified against a real commit,
+not assumed.

@@ -7,7 +7,7 @@ settings:
 importers:
 
   .:
-    devDependencies:
+    dependencies:
       husky:
         specifier: ^9
         version: 9.1.7
@@ -20,6 +20,7 @@ importers:
       oxlint:
         specifier: ^1.73
         version: 1.73.0
+    devDependencies:
       typescript:
         specifier: ^7
         version: 7.0.2

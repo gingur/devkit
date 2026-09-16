@@ -1,10 +1,10 @@
-// The CLI's contract: subcommands reach the right tool, arguments pass through
-// untouched, and a failing tool fails the caller.
+// The CLI's contract end to end: subcommands reach the right tool, arguments
+// pass through untouched, and exit codes mean what they say.
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 const CLI = fileURLToPath(new URL('./devkit.mjs', import.meta.url));
 
@@ -13,10 +13,12 @@ function devkit(args) {
   return spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' });
 }
 
-test('no command prints usage and exits 0', () => {
-  const { status, stdout } = devkit([]);
+test('no command prints usage listing every command, and exits 0', () => {
+  const { status, stdout, stderr } = devkit([]);
   assert.equal(status, 0);
-  assert.match(stdout, /devkit lint/);
+  for (const name of ['lint', 'fmt', 'staged', 'hooks']) {
+    assert.match(stdout + stderr, new RegExp(`^\\s+${name}\\b`, 'm'));
+  }
 });
 
 test('--help prints usage and exits 0', () => {
@@ -26,23 +28,32 @@ test('--help prints usage and exits 0', () => {
 test('an unknown command exits 2 and names what was passed', () => {
   const { status, stderr } = devkit(['frobnicate']);
   assert.equal(status, 2);
-  assert.match(stderr, /unknown command `frobnicate`/);
+  assert.match(stderr, /frobnicate/);
 });
 
-test('hooks rejects anything but install', () => {
+test('an unknown subcommand of a group exits 2', () => {
+  // Regression: exitOverride is not inherited by addCommand, so this exited 1
+  // while a top-level unknown command exited 2.
   const { status, stderr } = devkit(['hooks', 'uninstall']);
   assert.equal(status, 2);
-  assert.match(stderr, /expected `install`/);
+  assert.match(stderr, /uninstall/);
 });
 
-// One case per subcommand, proving the argument reached the intended tool.
-// --help is used because all three exit 0 and name themselves in the output,
-// so the assertion does not depend on a working repo to lint or format.
-for (const [command, signature] of [
-  ['lint', /oxlint/i],
-  ['fmt', /oxfmt/i],
+test('a group named without a subcommand prints its help and exits 0', () => {
+  const { status, stdout, stderr } = devkit(['hooks']);
+  assert.equal(status, 0);
+  assert.match(stdout + stderr, /install/);
+});
+
+// One case per wrapped tool, proving the argument reached the intended tool.
+/** @type {[string, RegExp][]} */
+const WRAPPED = [
+  ['lint', /oxlint|oxlintrc/i],
+  ['fmt', /oxfmt|format/i],
   ['staged', /lint-staged/i],
-]) {
+];
+
+for (const [command, signature] of WRAPPED) {
   test(`${command} runs its tool and passes arguments through`, () => {
     const { status, stdout, stderr } = devkit([command, '--help']);
     assert.equal(status, 0, stderr);
@@ -50,9 +61,33 @@ for (const [command, signature] of [
   });
 }
 
+test('--help on a pass-through command reaches the tool, not devkit', () => {
+  // oxlint's help names an oxlint concept and not devkit's other subcommands.
+  const { stdout, stderr } = devkit(['lint', '--help']);
+  assert.match(stdout + stderr, /oxlintrc|oxlint/i);
+  assert.doesNotMatch(stdout + stderr, /Run lint-staged/);
+});
+
+test('--help on a parsed command is answered by devkit', () => {
+  // The converse of the above: parsed commands keep Commander's help.
+  const { status, stdout, stderr } = devkit(['hooks', 'install', '--help']);
+  assert.equal(status, 0);
+  assert.match(stdout + stderr, /Install husky/i);
+});
+
+test('a flag devkit does not model still reaches the tool', () => {
+  // The escape hatch. `--fix` is oxlint's, unknown to devkit, and must not be
+  // swallowed by the router.
+  const { status, stderr } = devkit(['lint', '--fix']);
+  assert.equal(status, 0, stderr);
+});
+
+test('a flag after a positional still reaches the tool', () => {
+  const { status, stderr } = devkit(['lint', 'bin', '--quiet']);
+  assert.equal(status, 0, stderr);
+});
+
 test("a tool's non-zero exit becomes the CLI's exit code", () => {
-  // oxlint rejects an unknown flag. The point is that the failure propagates
-  // rather than being swallowed by the wrapper.
   const { status } = devkit(['lint', '--not-a-real-flag']);
-  assert.notEqual(status, 0);
+  assert.equal(status, 1);
 });

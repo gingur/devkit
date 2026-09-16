@@ -1,0 +1,19 @@
+{
+  "extends": "./configs/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+
+    // bin/ is JavaScript, checked through JSDoc. Node refuses to strip types
+    // for files under node_modules, which is exactly where a consumer runs
+    // devkit from, so shipping .ts is not an option — see CLAUDE.md.
+    "allowJs": true,
+    "checkJs": true,
+
+    // devkit's own bin/ only; the shared base deliberately declares no module
+    // system, so consumers pick their own.
+    "module": "nodenext",
+    "target": "esnext",
+    "types": ["node"]
+  },
+  "include": ["bin/**/*.mjs", "bin/**/*.d.ts"]
+}

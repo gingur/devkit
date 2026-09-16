@@ -22,7 +22,6 @@ for (const pkg of MANAGED) {
   });
 
   test(`toolBin(${pkg}) resolves inside devkit's own tree, not a consumer .bin`, () => {
-    // The whole point of the CLI: a consumer never has these on its PATH.
     assert.match(toolBin(pkg), /node_modules/);
   });
 
@@ -33,7 +32,6 @@ for (const pkg of MANAGED) {
   test(`toolArgv(${pkg}) runs the tool`, () => {
     const [exe, ...args] = toolArgv(pkg);
     assert.equal(exe, process.execPath);
-    // --help is the one flag all three agree on, and it exits 0.
     execFileSync(exe, [...args, '--help'], { stdio: 'ignore' });
   });
 

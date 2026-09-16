@@ -134,11 +134,18 @@ every subcommand resolves its tool out of devkit's own install tree.
 | `devkit staged`         | `lint-staged`                     |
 | `devkit hooks install`  | `husky`, installing the git hooks |
 
-Everything after the subcommand passes through untouched, so a flag devkit does
-not model still works: `devkit lint --quiet src/`. `devkit hooks install` stays
-an explicit consumer action (a `prepare` script) rather than a devkit package
+`devkit --help` lists them; `devkit <group>` lists one group's commands.
+
+The three tool wrappers are **blind**: everything after the subcommand passes
+through untouched, so a flag devkit does not model still works —
+`devkit lint --quiet src/`, `devkit lint --fix`, and `devkit lint --help`, which
+answers with oxlint's help rather than devkit's. `devkit hooks install` stays an
+explicit consumer action (a `prepare` script) rather than a devkit package
 lifecycle, so installing dependencies never runs a script and pnpm never needs
 an `allowBuilds` entry.
+
+Exit codes: a wrapped tool's code propagates unchanged, a signal becomes
+`128 + signum`, and a devkit usage error is `2`.
 
 **Escape hatch.** A repo that must pin or call a tool directly adds it as its own
 devDependency — that puts the binary back in the consumer's `.bin`, where it

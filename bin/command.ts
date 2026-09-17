@@ -34,10 +34,3 @@ export type CommandModule = PassthroughCommand | ParsedCommand;
 export interface CommandGroup {
   describe: string;
 }
-
-/** A command file, and the command path its location implies. */
-export interface Route {
-  /** e.g. `['hooks', 'install']` */
-  path: string[];
-  file: string;
-}

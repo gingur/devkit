@@ -3,7 +3,10 @@
 // register looks exactly like a file that was never added.
 
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -82,4 +85,37 @@ test('discover ignores test files and group metadata', async () => {
   const routes = await discover(COMMANDS);
   assert.ok(!routes.some((r) => r.file.includes('.test.')));
   assert.ok(!routes.some((r) => r.path.at(-1) === 'index'));
+});
+
+test('a parsed command is handed its options and its arguments', async () => {
+  // The other half of the kind split, and the half nothing else reaches: the
+  // only parsed command devkit ships takes neither flags nor arguments, so a
+  // fixture is the only way to assert the router wires them the right way round.
+  const dir = mkdtempSync(join(tmpdir(), 'devkit-router-'));
+  const received = join(dir, 'received.json');
+  writeFileSync(
+    join(dir, 'probe.ts'),
+    [
+      "import { writeFileSync } from 'node:fs';",
+      'export default {',
+      "  kind: 'parsed' as const,",
+      "  describe: 'probe',",
+      '  configure(command) {',
+      "    command.argument('[names...]').option('--loud');",
+      '  },',
+      '  run(options: unknown, args: string[]) {',
+      `    writeFileSync(${JSON.stringify(received)}, JSON.stringify({ options, args }));`,
+      '  },',
+      '};',
+    ].join('\n'),
+  );
+
+  const program = new Command('devkit');
+  await register(program, dir);
+  await program.parseAsync(['probe', '--loud', 'a', 'b'], { from: 'user' });
+
+  assert.deepEqual(JSON.parse(readFileSync(received, 'utf8')), {
+    options: { loud: true },
+    args: ['a', 'b'],
+  });
 });

@@ -19,19 +19,18 @@ const program = new Command('devkit').description(
 
 await register(program, fileURLToPath(new URL('./commands', import.meta.url)));
 
-// Commander exits 1 on a usage error; devkit uses 2, and the tests pin it. The
-// override is not inherited by commands added with addCommand, so it is applied
-// to every node — without this, `devkit frobnicate` exits 2 while
-// `devkit hooks uninstall` exits 1.
-//
 // Displayed help is a success even when Commander reaches it by erroring — a
 // bare `devkit`, or a group named without a subcommand, should print usage and
 // exit 0. Only a real usage error is a 2.
+const INFORMATIONAL = /^commander\.(help|version)/;
+
+// Commander exits 1 on a usage error; devkit uses 2, and the tests pin it.
+// `copyInheritedSettings` would carry the override down, but Commander only
+// calls it from `.command()`, never from `addCommand` — so it is applied to
+// every node instead. Without this, `devkit frobnicate` exits 2 while
+// `devkit hooks uninstall` exits 1.
 function pinExitCodes(command: Command): void {
-  command.exitOverride((err) => {
-    const informational = err.code.startsWith('commander.help') || err.code === 'commander.version';
-    process.exit(informational ? 0 : 2);
-  });
+  command.exitOverride((err) => process.exit(INFORMATIONAL.test(err.code) ? 0 : 2));
   command.commands.forEach(pinExitCodes);
 }
 pinExitCodes(program);

@@ -9,19 +9,31 @@
 // keeping command modules thin — metadata and a handler, with heavy work behind
 // a lazy import *inside* the handler.
 
+import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { Command } from 'commander';
 
-import type { CommandGroup, CommandModule, Route } from './command.ts';
+import type { CommandGroup, CommandModule } from './command.ts';
 
 const COMMAND_EXT = '.ts';
-const GROUP_FILE = 'index';
+const GROUP_FILE = `index${COMMAND_EXT}`;
 
-function isRoutable(name: string): boolean {
-  return extname(name) === COMMAND_EXT && !name.includes('.test.');
+/** A command file, and the command path its location implies. */
+export interface Route {
+  /** e.g. `['hooks', 'install']` */
+  path: string[];
+  file: string;
+}
+
+/**
+ * Whether a file under commands/ is itself a command. Its own tests are not,
+ * and neither is a GROUP_FILE — that describes the directory it sits in.
+ */
+function isCommandFile(name: string): boolean {
+  return extname(name) === COMMAND_EXT && !name.includes('.test.') && name !== GROUP_FILE;
 }
 
 /** Walk a commands directory into routes, depth-first, alphabetically. */
@@ -35,11 +47,8 @@ export async function discover(dir: string, prefix: string[] = []): Promise<Rout
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
       routes.push(...(await discover(full, [...prefix, entry.name])));
-    } else if (isRoutable(entry.name)) {
-      const name = basename(entry.name, COMMAND_EXT);
-      // index.ts describes the group it sits in; it is not itself a command.
-      if (name === GROUP_FILE) continue;
-      routes.push({ path: [...prefix, name], file: full });
+    } else if (isCommandFile(entry.name)) {
+      routes.push({ path: [...prefix, basename(entry.name, COMMAND_EXT)], file: full });
     }
   }
 
@@ -57,16 +66,22 @@ async function load<T>(file: string): Promise<T> {
  */
 async function parentOf(program: Command, path: string[], dir: string): Promise<Command> {
   let parent = program;
+  let groupDir = dir;
 
-  for (const [depth, segment] of path.slice(0, -1).entries()) {
+  for (const segment of path.slice(0, -1)) {
+    groupDir = join(groupDir, segment);
+
     const existing = parent.commands.find((c) => c.name() === segment);
     if (existing) {
       parent = existing;
       continue;
     }
 
-    const groupFile = join(dir, ...path.slice(0, depth + 1), `${GROUP_FILE}${COMMAND_EXT}`);
-    const meta = await load<CommandGroup | undefined>(groupFile).catch(() => undefined);
+    // A group's index.ts is optional, so its absence is not an error — but a
+    // broken one is. Testing for the file keeps an import failure loud instead
+    // of quietly falling back to the generated description.
+    const groupFile = join(groupDir, GROUP_FILE);
+    const meta = existsSync(groupFile) ? await load<CommandGroup>(groupFile) : undefined;
 
     const group = new Command(segment).description(meta?.describe ?? `${segment} commands`);
     parent.addCommand(group);
@@ -74,35 +89,6 @@ async function parentOf(program: Command, path: string[], dir: string): Promise<
   }
 
   return parent;
-}
-
-function applyPassthrough(
-  command: Command,
-  module: Extract<CommandModule, { kind: 'passthrough' }>,
-): void {
-  command
-    .argument('[args...]')
-    // Without this an unmodelled flag is an error; with it, it becomes an
-    // ordinary command-argument and reaches the tool. This is what makes
-    // `devkit lint --fix` work.
-    .allowUnknownOption()
-    // And this keeps options *after* a path from being reparsed as devkit's:
-    // `devkit lint src/ --fix`.
-    .passThroughOptions()
-    // Commander would otherwise answer `devkit lint --help` itself. A blind
-    // wrapper must let the tool answer for its own flags.
-    .helpOption(false)
-    .action((args: string[]) => module.run(args));
-}
-
-function applyParsed(command: Command, module: Extract<CommandModule, { kind: 'parsed' }>): void {
-  module.configure?.(command);
-  command.action((...argv: unknown[]) => {
-    // Commander passes declared arguments, then options, then the Command.
-    const options = argv.at(-2) as Record<string, unknown>;
-    const args = argv.slice(0, -2) as string[][];
-    return module.run(options, args.flat());
-  });
 }
 
 /** Register every command found under `dir` onto `program`. */
@@ -117,8 +103,24 @@ export async function register(program: Command, dir: string): Promise<Route[]> 
     const module = await load<CommandModule>(route.file);
     const command = new Command(route.path.at(-1)).description(module.describe);
 
-    if (module.kind === 'passthrough') applyPassthrough(command, module);
-    else applyParsed(command, module);
+    if (module.kind === 'passthrough') {
+      command
+        .argument('[args...]')
+        // Without this an unmodelled flag is an error; with it, it becomes an
+        // ordinary command-argument and reaches the tool. This is what makes
+        // `devkit lint --fix` work.
+        .allowUnknownOption()
+        // And this keeps options *after* a path from being reparsed as devkit's:
+        // `devkit lint src/ --fix`.
+        .passThroughOptions()
+        // Commander would otherwise answer `devkit lint --help` itself. A blind
+        // wrapper must let the tool answer for its own flags.
+        .helpOption(false)
+        .action((args: string[]) => module.run(args));
+    } else {
+      module.configure?.(command);
+      command.action(() => module.run(command.opts(), command.args));
+    }
 
     (await parentOf(program, route.path, dir)).addCommand(command);
   }

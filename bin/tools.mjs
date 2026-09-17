@@ -7,7 +7,7 @@
 // install tree from wherever devkit happens to be installed.
 //
 // This module is JavaScript while the rest of bin/ is TypeScript, and that is
-// deliberate — see tools.d.ts for why.
+// deliberate — see tools.d.mts for why.
 
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';

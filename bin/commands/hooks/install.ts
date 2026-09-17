@@ -12,8 +12,14 @@ const SHIM = fileURLToPath(new URL('./shim.sh', import.meta.url));
 /** Hooks devkit installs a shim for. The shim dispatches on its own basename. */
 const HOOKS = ['pre-commit'];
 
-function git(...args: string[]): string {
-  return execFileSync('git', args, { encoding: 'utf8' }).trim();
+/**
+ * Run git from `cwd`. Every call after the first passes the resolved repo root,
+ * because `update-index` takes a path relative to the process's directory —
+ * and `prepare` runs wherever dependencies are installed, which in a workspace
+ * is a package subdirectory, not the root.
+ */
+function git(cwd: string, ...args: string[]): string {
+  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 }
 
 export default {
@@ -26,7 +32,7 @@ export default {
     // not fail the install.
     let root: string;
     try {
-      root = git('rev-parse', '--show-toplevel');
+      root = git(process.cwd(), 'rev-parse', '--show-toplevel');
     } catch {
       console.log('devkit: not a git repository — skipping hook install');
       return;
@@ -41,17 +47,19 @@ export default {
 
       // Both modes, because they are different things and each fails alone.
       //
-      // The filesystem bit is what git checks before RUNNING the hook here;
-      // copyFileSync does not carry it, and without this git skips the hook
-      // with only a `hint:` on stderr. Caught exactly that way on this repo.
+      // Filesystem bit: what git checks before RUNNING the hook in this
+      // checkout. copyFileSync carries the source's mode, but `pnpm pack`
+      // normalises everything except package.json `bin` entries to 644 — so a
+      // consumer who installed a packed tarball gets the shim at 644 and git
+      // skips it with only a `hint:`. The next `git add` then drags the tracked
+      // mode down with it, so update-index alone is not durable either.
       chmodSync(path, 0o755);
 
-      // The tracked bit is what every OTHER checkout gets. On Windows
-      // chmodSync cannot set a POSIX bit and Git for Windows runs
-      // core.filemode=false, so the recorded mode would be 100644 and the shim
-      // would be inert for everyone. update-index --chmod is honoured
-      // regardless of core.filemode.
-      git('update-index', '--add', '--chmod=+x', `${HOOKS_DIR}/${hook}`);
+      // Tracked bit: what every OTHER checkout receives. On Windows chmodSync
+      // cannot set a POSIX bit and Git for Windows runs core.filemode=false,
+      // so the recorded mode would be 100644 and the shim inert for everyone.
+      // update-index --chmod is honoured regardless of core.filemode.
+      git(root, 'update-index', '--add', '--chmod=+x', `${HOOKS_DIR}/${hook}`);
 
       // The shim runs the body and refuses when it is missing, so say so at
       // install time rather than at the first commit.
@@ -62,7 +70,7 @@ export default {
       }
     }
 
-    git('config', 'core.hooksPath', HOOKS_DIR);
+    git(root, 'config', 'core.hooksPath', HOOKS_DIR);
 
     console.log(`devkit: installed ${HOOKS.map((h) => `${HOOKS_DIR}/${h}`).join(', ')}`);
     console.log(`devkit: core.hooksPath -> ${HOOKS_DIR}`);

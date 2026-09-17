@@ -356,11 +356,22 @@ redirected by `NODE_PATH`. Committing from a worktree that never ran
 `pnpm install` therefore fails on config resolution. Loud, not silent — but do
 not document it as working.
 
-The shim is staged with `git update-index --chmod=+x`, never `chmodSync`. On
-Windows `chmodSync` cannot set a POSIX bit and Git for Windows runs with
-`core.filemode=false`, so a shim committed from there would be tracked `100644`
-— and git skips a non-executable hook with only a `hint:` on stderr, which is
-precisely the silent skip this replaced husky to avoid.
+**`hooks install` sets the exec bit twice, and both are load-bearing.** Removing
+either one reproduces the silent skip this replaced husky to avoid, so do not
+"simplify" it to one call — that regressed once already.
+
+- `chmodSync` — the filesystem bit, which git checks before running the hook in
+  _this_ checkout. `copyFileSync` carries the source's mode, but `pnpm pack`
+  normalises everything except `package.json` `bin` entries to 644, so a
+  tarball-installed consumer has `shim.sh` at 644. The next `git add` then drags
+  the tracked mode down to match, so the staged bit alone is not durable either.
+- `git update-index --add --chmod=+x` — the tracked bit, which every _other_
+  checkout receives. On Windows `chmodSync` cannot set a POSIX bit and Git for
+  Windows runs `core.filemode=false`, so the recorded mode would be `100644`.
+
+Every git call passes the resolved repo root as its cwd: `prepare` runs wherever
+dependencies are installed, which in a workspace is a package subdirectory, and
+`update-index` takes a path relative to the process directory.
 
 Consumers wire the hook body to run `devkit staged` and
 `infisical scan git-changes --staged` (shared `configs/infisical-scan.toml`).

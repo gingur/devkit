@@ -10,12 +10,15 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
+  chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -155,14 +158,7 @@ test('devkit hooks install writes the shim and points core.hooksPath at it', () 
   assert.equal(r.status, 0, r.stderr);
   assert.equal(git(dir, 'config', '--get', 'core.hooksPath'), '.githooks');
 
-  // Both modes, because they are different things and each fails alone.
-  // Filesystem: what git checks before running the hook in THIS checkout —
-  // copyFileSync does not carry it, and dropping it made git skip devkit's own
-  // hook with only a `hint:`. Tracked: what every other checkout receives.
-  assert.ok(
-    statSync(join(dir, '.githooks', 'pre-commit')).mode & 0o111,
-    'shim is not executable on disk — git will skip it here',
-  );
+  // Tracked mode: what every OTHER checkout receives.
   assert.match(
     git(dir, 'ls-files', '-s', '.githooks/pre-commit'),
     /^100755 /,
@@ -188,6 +184,54 @@ test('a missing hook body fails loudly rather than passing silently', () => {
   const r = commit(main, 'e.txt');
   assert.notEqual(r.status, 0, 'commit succeeded with no hook body');
   assert.match(r.stderr, /does not exist/);
+});
+
+test('install sets the filesystem exec bit even when the source lost it', async () => {
+  // `pnpm pack` normalises everything except package.json `bin` entries to 644,
+  // so a consumer who installed a packed tarball has shim.sh at 644.
+  // copyFileSync carries the SOURCE's mode, so without chmodSync the installed
+  // hook is 644 and git skips it with only a `hint:`. In this repo shim.sh is
+  // 755, which is why asserting on a plain install proves nothing — stand in
+  // for the published layout by copying bin/ and stripping the bit.
+  const dir = scratch('devkit-packed-');
+  const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+  // bin/ and configs/ both ship, and the router imports every command eagerly —
+  // lint.ts reads configs/oxlintrc.base.json at module scope.
+  cpSync(join(repoRoot, 'bin'), join(dir, 'bin'), { recursive: true });
+  cpSync(join(repoRoot, 'configs'), join(dir, 'configs'), { recursive: true });
+  chmodSync(join(dir, 'bin', 'commands', 'hooks', 'shim.sh'), 0o644);
+  // Dependencies resolve as an installed package's would.
+  symlinkSync(join(repoRoot, 'node_modules'), join(dir, 'node_modules'));
+
+  const work = join(dir, 'repo');
+  mkdirSync(work);
+  git(work, 'init', '-q', '-b', 'main', '.');
+
+  const r = spawnSync(process.execPath, [join(dir, 'bin', 'devkit.mjs'), 'hooks', 'install'], {
+    cwd: work,
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(
+    statSync(join(work, '.githooks', 'pre-commit')).mode & 0o111,
+    'shim is not executable on disk — git will skip it in this checkout',
+  );
+});
+
+test('install works when prepare runs from a subdirectory', () => {
+  // `prepare` runs wherever dependencies are installed, which in a pnpm
+  // workspace is a package directory. update-index takes a CWD-relative path,
+  // so running git from the process directory failed with "does not exist"
+  // AFTER copying the shim and BEFORE setting core.hooksPath — a half install.
+  const dir = scratch('devkit-subdir-');
+  git(dir, 'init', '-q', '-b', 'main', '.');
+  const pkg = join(dir, 'packages', 'app');
+  mkdirSync(pkg, { recursive: true });
+
+  const r = spawnSync(process.execPath, [CLI, 'hooks', 'install'], { cwd: pkg, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(git(dir, 'config', '--get', 'core.hooksPath'), '.githooks');
+  assert.match(git(dir, 'ls-files', '-s', '.githooks/pre-commit'), /^100755 /);
 });
 
 test("devkit's own committed shim matches the one it installs", () => {

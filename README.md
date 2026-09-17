@@ -317,9 +317,17 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 > fails with a config-resolution error — loudly, which is the point, but it is a
 > failure rather than a fallback.
 >
-> **Migrating:** run `devkit hooks install`, commit `.githooks/`, drop `husky`
-> from your devDependencies, and delete `.husky/_`. Your `.husky/<hook>` body
-> stays exactly where it is.
+> **Migrating**, in this order — the first step matters most, because husky
+> would otherwise run once more and reset `core.hooksPath` back to `.husky/_`:
+>
+> 1. Replace `"prepare": "husky"` with `"prepare": "devkit hooks install"`.
+> 2. Drop `husky` from your devDependencies.
+> 3. Run `pnpm install` (or `devkit hooks install` directly).
+> 4. Commit `.githooks/` and `package.json`.
+> 5. Delete `.husky/_`. Keep `.husky/<hook>` — that body is still what runs.
+>
+> `devkit hooks install` stages `.githooks/` as part of its work, so expect it
+> in `git status` after any install.
 >
 > To audit a repo you do not control, check whether `core.hooksPath` points at
 > a directory that is tracked in git. If it is not, it exists only where an

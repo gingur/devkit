@@ -90,12 +90,17 @@ jobs:
       - name: Devkit freshness
         if: ${{ inputs.devkitFreshness }}
         run: |
-          if git diff --quiet -- pnpm-lock.yaml .githooks; then
+          # Against HEAD, not the index. `devkit hooks install` runs from
+          # `prepare` and STAGES the refreshed shim, so a plain `git diff`
+          # compares worktree to index, sees them agree, and reports "current"
+          # while .githooks differs from what is committed — CI asserting
+          # something it did not check.
+          if git diff --quiet HEAD -- pnpm-lock.yaml .githooks; then
             echo "lockfile and hooks are current for @gingur/devkit"
             exit 0
           fi
-          echo "::error title=Stale @gingur/devkit::The committed pnpm-lock.yaml pins an older @gingur/devkit than its specifier resolves to. Your pre-commit hook is running different rules than CI. Run 'pnpm update @gingur/devkit' and commit the lockfile."
-          git --no-pager diff --stat -- pnpm-lock.yaml .githooks
+          echo "::error title=Stale @gingur/devkit::The committed pnpm-lock.yaml and/or .githooks are older than what this repo's devkit specifier resolves to, so your pre-commit hook runs different rules than CI. Run 'pnpm update @gingur/devkit && pnpm install', then commit pnpm-lock.yaml and .githooks/."
+          git --no-pager diff --stat HEAD -- pnpm-lock.yaml .githooks
           exit 1
 
       - name: Format

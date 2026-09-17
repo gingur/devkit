@@ -15,6 +15,10 @@
 
 set -e
 
+# An exported CDPATH makes `cd` echo its destination, which would end up
+# concatenated into the resolved paths below.
+CDPATH=''
+
 hook=$(basename "$0")
 here=$(cd "$(dirname "$0")/.." && pwd)
 

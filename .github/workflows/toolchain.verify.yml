@@ -48,6 +48,11 @@ on:
         type: string
         required: false
         default: 'build'
+      devkitFreshness:
+        description: 'Fail when the committed lockfile pins a stale @gingur/devkit. Off for repos that deliberately hold it back.'
+        type: boolean
+        required: false
+        default: true
       runner:
         description: 'Runner label.'
         type: string
@@ -72,6 +77,38 @@ jobs:
           node: ${{ inputs.node }}
           pnpm: ${{ inputs.pnpm }}
           bun: ${{ inputs.bun }}
+
+      # toolchain.setup re-resolves @gingur/devkit past the lockfile pin, so CI
+      # runs against the specifier's head while local development runs against
+      # whatever the lockfile froze. When those differ, the pre-commit hook and
+      # CI enforce different rules — gingur/spinquest-lab sat 3 commits behind
+      # with an inverted lint-staged task order, so commits passed the hook and
+      # failed `oxfmt --check` here.
+      #
+      # A dirty lockfile after the refresh IS that drift, so fail the PR where
+      # it is actionable. Repos without the dependency see no diff and no check.
+      - name: Devkit freshness
+        if: ${{ inputs.devkitFreshness }}
+        run: |
+          # Against HEAD, not the index. `devkit hooks install` runs from
+          # `prepare` and STAGES the refreshed shim, so a plain `git diff`
+          # compares worktree to index, sees them agree, and reports "current"
+          # while .githooks differs from what is committed — CI asserting
+          # something it did not check.
+          #
+          # `:/.githooks` is root-anchored. This step inherits
+          # defaults.run.working-directory, so a bare `.githooks` would resolve
+          # under `cwd` — while `devkit hooks install` always writes to the repo
+          # root. With `cwd` set, the unanchored form reports "current" without
+          # having looked at the hooks at all. The lockfile stays relative,
+          # because it genuinely does live in `cwd`.
+          if git diff --quiet HEAD -- pnpm-lock.yaml :/.githooks; then
+            echo "lockfile and hooks are current for @gingur/devkit"
+            exit 0
+          fi
+          echo "::error title=Stale @gingur/devkit::The committed pnpm-lock.yaml and/or .githooks are older than what this repo's devkit specifier resolves to, so your pre-commit hook runs different rules than CI. Run 'pnpm update @gingur/devkit && pnpm install', then commit pnpm-lock.yaml and .githooks/."
+          git --no-pager diff --stat HEAD -- pnpm-lock.yaml :/.githooks
+          exit 1
 
       - name: Format
         if: ${{ inputs.format != '' }}

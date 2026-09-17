@@ -73,8 +73,68 @@ takes extra dots for compound lifecycles (4+: `cf.worker.preview.cleanup`).
 .github/workflows/   reusable workflows — uses: gingur/devkit/.github/workflows/<name>.yml@main
 actions/             composite actions  — uses: gingur/devkit/actions/<name>@main
 configs/             shared tool configs (oxlint, oxfmt, tsconfig, …)
+bin/                 the `devkit` CLI — the local half of the same contract
+  commands/          one file per command; the path IS the command
 ```
 
+- **`bin/` ships as source, never built.** Consumers install devkit as a git
+  dependency (`github:gingur/devkit#main`), so whatever is committed is what
+  runs. No bundler, no `prepare` script — adding an install lifecycle would
+  force consumers into a pnpm `onlyBuiltDependencies` entry.
+- **`bin/` is TypeScript, and it runs via a loader — not Node's own stripping.**
+  Node refuses to strip types for any file under `node_modules`
+  (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), which is exactly where a
+  consumer runs devkit from. That is deliberate, it applies to `.ts`/`.mts`/`.cts`
+  alike on Node 22 and 24, no flag lifts it, and
+  [nodejs/node#57215](https://github.com/nodejs/node/issues/57215) is closed
+  `not_planned` — there is nothing to wait for. So `bin/devkit.mjs` installs
+  `bin/loader.mjs` (oxc-transform via `module.registerHooks`) and imports
+  `cli.ts`. `devkit.mjs`, `loader.mjs` and `tools.mjs` stay JavaScript because
+  the loader cannot transform the files that install it.
+  - **oxc-transform, not tsx:** no install script (tsx pulls esbuild, whose
+    blocked `postinstall` prints a warning on every consumer install), a third
+    the size, and the same vendor as the `oxlint`/`oxfmt` pinned here. It is
+    pre-1.0 and its API has already churned — **pin it exactly**, as with
+    `oxfmt`.
+  - **Two details in `loader.mjs` fail silently if removed.** oxc _returns_
+    syntax errors instead of throwing, so without the `errors.length` check a
+    broken file yields wrong code; and without the inline sourcemap every stack
+    trace points at the post-transform line. `bin/loader.test.ts` pins both.
+  - **The loader does no type checking.** `tsc --noEmit` in `verify` is the only
+    thing that does.
+  - **Beware a fixture that appears to disprove all this.** A dependency-free
+    package gets symlinked _outside_ `node_modules` and strips fine; devkit has
+    dependencies, so it does not. Test with `pnpm pack` + install the tarball,
+    and assert `readlink -f` lands inside `node_modules`.
+- **`bin/tools.mjs` must stay JavaScript.** It is the one module loaded from two
+  runtimes: the CLI (which has the loader) and lint-staged, which devkit spawns
+  as a plain `node` child with no loader, reaching it through
+  `configs/lint-staged.config.js`. A `.ts` there breaks every consumer's
+  pre-commit hook. Its types live in `bin/tools.d.mts`.
+- **Nothing invokes a managed tool by bare name.** oxlint, oxfmt, lint-staged
+  are devkit's `dependencies`, so under pnpm they are absent from a
+  consumer's `node_modules/.bin`. Every call goes through `bin/tools.mjs`, which
+  resolves them from devkit's own tree. A bare `oxlint` passes devkit's own CI
+  (where it _is_ linked) and fails for every consumer — `bin/tools.test.ts`
+  exists to catch exactly that.
+- **Commands are files.** `bin/commands/hooks/install.ts` is
+  `devkit hooks install`; `bin/router.ts` discovers the tree and registers it
+  on Commander. Adding a command means adding a file and nothing else, and
+  `bin/router.test.ts` asserts the tree matches the registered paths so a file
+  cannot silently fail to register. An `index.ts` in a directory describes the
+  group rather than being a command.
+- **Every command declares a `kind`, and the two are opposites.**
+  `passthrough` (`lint`, `fmt`, `staged`) means devkit parses _nothing_ after
+  the subcommand — that blindness is the escape hatch that lets
+  `devkit lint --fix` reach oxlint, and it is why those commands also disown
+  `--help`. `parsed` (`hooks install`, and everything #197/#199 add) means
+  devkit owns the flags and an unknown one is a usage error. Getting this wrong
+  fails silently: the router would swallow `--fix` and oxlint would never see it.
+- **Command modules stay thin and are imported eagerly.** Commander needs option
+  specs at registration time to build help and reject unknown flags, so lazy
+  per-command loading is not available. Keep heavy work (clients, schemas)
+  behind a lazy `import()` _inside_ the handler instead — see
+  `commands/hooks/install.ts`.
 - **Workflows are thin glue** over single-purpose composite actions. Logic that's
   reused across workflows is extracted to a composite so it lives **once**.
 - **One concern per action.** If a workflow grows conditionals for a second
@@ -186,10 +246,25 @@ resolve the dependency **specifier** fresh every run — `#main` → branch head
 future `#semver:` tag → range-bounded. No-op when the dep is absent. Local dev
 catches up via `pnpm update @gingur/devkit`; **CI is authoritative**.
 
+**`ignorePatterns` in `configs/oxlintrc.base.json` does not reach consumers.**
+oxlint honours that key only from a config at the repo root; one shipped inside
+`node_modules` contributes none. Verified: from there, neither `node_modules/**`
+nor `**/node_modules/**` nor `../../../**` has any effect, and passing the file
+as `-c` does not help either — while the identical pattern in a consumer's own
+`.oxlintrc.json` works immediately. A consumer extending the base config
+inherits its rules and silently none of its ignores. `bin/commands/lint.ts`
+therefore reads that list and passes it as `--ignore-pattern` flags, which does
+work; the key stays the single definition. Do not "fix" an ignore problem by
+adding patterns to the shared config — they will do nothing.
+
+`oxfmt` does not share this hole; it skips `node_modules` on its own.
+
 **Working rule:** shared-config changes land backward-compatible, or roll out
-fleet-wide the same day. "Backward-compatible" includes tool-version floors
-(peerDependencies) — consumer binaries (e.g. vp-bundled oxlint/oxfmt) may lag
-devkit's floor.
+fleet-wide the same day. Tool versions are no longer a floor to reason about for
+oxlint and oxfmt — devkit owns them as dependencies, so bumping devkit bumps the
+tool. `typescript` is still a peer (consumers run their own `tsc`), and a
+consumer that deliberately pins a tool as its own devDependency wins in its
+`.bin` for direct invocations.
 
 ### Required permissions
 
@@ -253,9 +328,60 @@ name = "<app>-preview"   # placeholder; overridden per-PR by --name, no custom r
 Copy-paste preview + cleanup workflow examples live in
 [README → PR previews](./README.md).
 
-### Pre-commit (husky)
+### Pre-commit (consumer)
 
-Consumers wire a husky `pre-commit` hook that runs `lint-staged` and
+`devkit hooks install` writes `.githooks/pre-commit` and points
+`core.hooksPath` at it. **Commit `.githooks/` — being tracked is the entire
+point.** The hook body stays at `.husky/<hook>`, so adopting this costs no
+edits; the shim runs it.
+
+**Why not husky.** husky points `core.hooksPath` at `.husky/_`, which it
+generates during install and gitignores. `core.hooksPath` is _repository_
+config, so every `git worktree add` inherits it — but the worktree has no
+`node_modules` and therefore no `.husky/_`. Git does not warn when
+`core.hooksPath` names a directory that does not exist: it runs no hook and
+exits 0. Three worktrees of `gingur/spinquest-lab` had been committing with
+every check silently skipped. A tracked shim exists in every worktree, so this
+cannot recur; `bin/hooks.test.ts` drives real `git worktree add` to prove it.
+
+The shim finds the `devkit` binary in the worktree, else in the main checkout
+via `git rev-parse --git-common-dir`, and **fails loudly** when it finds
+neither — as it does when the hook body itself is missing. A hook that cannot
+run must not look like a hook that passed.
+
+**The fallback covers the binary, not the consumer's configs.**
+`lint-staged.config.js`, `oxfmt.config.ts` and `.oxlintrc.json` resolve
+`@gingur/devkit` relative to the worktree, and a bare ESM specifier cannot be
+redirected by `NODE_PATH`. Committing from a worktree that never ran
+`pnpm install` therefore fails on config resolution. Loud, not silent — but do
+not document it as working.
+
+**`hooks install` sets the exec bit twice, and both are load-bearing.** Removing
+either one reproduces the silent skip this replaced husky to avoid, so do not
+"simplify" it to one call — that regressed once already.
+
+- `chmodSync` — the filesystem bit, which git checks before running the hook in
+  _this_ checkout. `copyFileSync` carries the source's mode, but `pnpm pack`
+  normalises everything except `package.json` `bin` entries to 644, so a
+  tarball-installed consumer has `shim.sh` at 644. The next `git add` then drags
+  the tracked mode down to match, so the staged bit alone is not durable either.
+- `git update-index --add --chmod=+x` — the tracked bit, which every _other_
+  checkout receives. On Windows `chmodSync` cannot set a POSIX bit and Git for
+  Windows runs `core.filemode=false`, so the recorded mode would be `100644`.
+
+Every git call _after the first_ passes the resolved repo root as its cwd — the
+first cannot, since it is the one resolving the root. `prepare` runs wherever
+dependencies are installed, which in a workspace is a package subdirectory, and
+`update-index` takes a path relative to the process directory; run from the
+wrong one it fails after writing the shim and before setting `core.hooksPath`.
+
+For the same reason `toolchain.verify.yml`'s freshness check spells the hooks
+pathspec `:/.githooks`. That step inherits `working-directory`, and an
+unanchored pathspec would look under `cwd` for a file that is always at the
+root — reporting success without having checked.
+
+Consumers wire the hook body to run `devkit staged` and
 `infisical scan git-changes --staged` (shared `configs/infisical-scan.toml`).
 Requires the `infisical` CLI on PATH. CI (`infisical.secrets.scan.yml`) is the
-enforced backstop since `--no-verify` skips the hook.
+enforced backstop since `--no-verify` skips the hook — keep it wired in every
+consumer, because it is what covers a bypassed local hook.

@@ -1,3 +1,5 @@
+import { toolCommand } from '../bin/tools.mjs';
+
 // Hand both tools everything staged rather than curating an extension
 // allowlist. oxfmt's detection is a linguist-style table keyed on full filename
 // as well as extension -- it formats `.webmanifest`, `.pcss`, `.code-workspace`
@@ -18,8 +20,13 @@
 // edge case: each tool exits non-zero when *nothing* it was handed is
 // actionable, so without it a commit of only images, or only shell scripts,
 // fails. That is a clean commit.
-const FORMAT = 'oxfmt --no-error-on-unmatched-pattern';
-const LINT = 'oxlint --fix --no-error-on-unmatched-pattern';
+//
+// The commands are absolute rather than bare `oxfmt` / `oxlint`: the tools are
+// devkit's dependencies, not the consumer's, so under pnpm they are absent from
+// the consumer's node_modules/.bin. toolCommand resolves them from devkit's own
+// tree and quotes the result, so a path containing a space still works.
+const FORMAT = `${toolCommand('oxfmt')} --no-error-on-unmatched-pattern`;
+const LINT = `${toolCommand('oxlint')} --fix --no-error-on-unmatched-pattern`;
 
 export default {
   // Lint first, format last. `oxlint --fix` rewrites code without regard for

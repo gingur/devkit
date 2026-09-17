@@ -7,6 +7,8 @@ Shared GitHub Actions and reusable workflows for [@gingur](https://github.com/gi
 ```
 .github/workflows/   reusable workflows  — uses: gingur/devkit/.github/workflows/<name>.yml@main
 actions/             composite actions   — uses: gingur/devkit/actions/<name>@main
+configs/             shared tool configs — imported via the exports map
+bin/                 the `devkit` CLI    — the local half of the same contract
 ```
 
 > Reusable workflows must live directly in `.github/workflows/` (GitHub requirement — no subdirs), so names group by **dot-notation** instead: `<provider>.<service>.<action…>.yml` — an extensible dotted path, not capped at three segments (`toolchain.verify.yml`, `cf.worker.deploy.yml`, `cf.worker.preview.cleanup.yml`). See [`CLAUDE.md`](./CLAUDE.md) for the naming standard.
@@ -52,8 +54,16 @@ For local development, install [proto](https://moonrepo.dev/proto) once and run 
 
 Add devkit as a dev dependency and wire up the config you need:
 
+```bash
+pnpm add -D github:gingur/devkit#main
+```
+
+devkit is **never published to npm** — it is `private`, its version stays
+`0.0.0`, and there are no tags. The git specifier is the only way to install it,
+so a bare `pnpm add -D @gingur/devkit` fails with "not in the npm registry".
+
 ```jsonc
-// package.json
+// package.json — what the command above writes
 "devDependencies": { "@gingur/devkit": "github:gingur/devkit#main" }
 ```
 
@@ -71,16 +81,23 @@ export { default } from '@gingur/devkit/oxfmt';
 ```
 
 ```jsonc
-// package.json scripts
-"scripts": { "lint": "oxlint", "fmt": "oxfmt", "fmt:check": "oxfmt --check" }
+// package.json scripts — call the devkit CLI, not the tool binaries
+"scripts": {
+  "lint": "devkit lint",
+  "lint:fix": "devkit lint --fix",
+  "fmt": "devkit fmt",
+  "fmt:check": "devkit fmt --check",
+  "staged": "devkit staged",
+  "prepare": "devkit hooks install"
+}
 ```
 
-| Export                       | File                    | Bring your own    |
-| ---------------------------- | ----------------------- | ----------------- |
-| `@gingur/devkit/oxlint`      | `oxlintrc.base.json`    | `oxlint`          |
-| `@gingur/devkit/oxfmt`       | `oxfmt.config.mjs`      | `oxfmt`           |
-| `@gingur/devkit/lint-staged` | `lint-staged.config.js` | `oxfmt`, `oxlint` |
-| `@gingur/devkit/tsconfig`    | `tsconfig.base.json`    | `typescript`      |
+| Export                       | File                    | Bring your own |
+| ---------------------------- | ----------------------- | -------------- |
+| `@gingur/devkit/oxlint`      | `oxlintrc.base.json`    | —              |
+| `@gingur/devkit/oxfmt`       | `oxfmt.config.mjs`      | —              |
+| `@gingur/devkit/lint-staged` | `lint-staged.config.js` | —              |
+| `@gingur/devkit/tsconfig`    | `tsconfig.base.json`    | `typescript`   |
 
 The lint-staged config hands **every** staged file to both tools under a single
 `'*'` group rather than listing extensions, so the hook and a repo-wide
@@ -99,22 +116,52 @@ Two consequences worth knowing before you bump devkit:
   second glob overlaps `'*'` and lint-staged runs the two groups concurrently,
   putting two writers on one file.
 
-These tools are **not** bundled — the configs reference them but consumers install
-them. They are declared as `peerDependencies` (so your package manager warns when
-one is missing); install the ones for the exports you use:
+### The `devkit` CLI
 
-```bash
-pnpm add -D oxlint oxfmt typescript
-```
+`oxlint`, `oxfmt` and `lint-staged` are devkit's own **dependencies**.
+A consumer declares `@gingur/devkit` and nothing else for this toolchain, and
+devkit owns the versions.
+
+The consequence that drives the CLI's existence: under pnpm's strict layout,
+devkit's dependencies are **not** in your `node_modules/.bin`. A bare `oxlint`
+in a script or a lint-staged task will not resolve. Only `devkit` is linked, and
+every subcommand resolves its tool out of devkit's own install tree.
+
+| Command                 | Runs                                          |
+| ----------------------- | --------------------------------------------- |
+| `devkit lint [...args]` | `oxlint`                                      |
+| `devkit fmt [...args]`  | `oxfmt`                                       |
+| `devkit staged`         | `lint-staged`                                 |
+| `devkit hooks install`  | installs `.githooks/` + sets `core.hooksPath` |
+
+`devkit --help` lists them; `devkit <group>` lists one group's commands.
+
+The three tool wrappers are **blind**: everything after the subcommand passes
+through untouched, so a flag devkit does not model still works —
+`devkit lint --quiet src/`, `devkit lint --fix`, and `devkit lint --help`, which
+answers with oxlint's help rather than devkit's. `devkit hooks install` stays an
+explicit consumer action (a `prepare` script) rather than a devkit package
+lifecycle, so installing dependencies never runs a script and pnpm never needs
+an `onlyBuiltDependencies` entry.
+
+Exit codes: a wrapped tool's code propagates unchanged, a signal becomes
+`128 + signum`, and a devkit usage error is `2`.
+
+**Escape hatch.** A repo that must pin or call a tool directly adds it as its own
+devDependency — that puts the binary back in the consumer's `.bin`, where it
+takes precedence for direct invocations — and keeps using the config exports.
+`typescript` stays a peer dependency for exactly this reason: consumers run
+their own `tsc`, and the TS major matters to them.
 
 > **Migration (ESLint/Prettier → oxlint/oxfmt).** Consumers track devkit via
 > `#main`, so they move in **lockstep**: on your next devkit bump, drop
-> `eslint` / `@eslint/js` / `typescript-eslint` / `prettier`, install the three
-> peers above, and replace `eslint.config.mjs` / `prettier.config.mjs` with the
-> `.oxlintrc.json` + `oxfmt.config.ts` wiring shown here. TypeScript baseline is
-> `^6 || ^7`: use TS7 unless a dependency still needs the TypeScript **JS
-> compiler API** (e.g. `@astrojs/check` peers `^5 || ^6`) — pin TS6 there until
-> it catches up.
+> `eslint` / `@eslint/js` / `typescript-eslint` / `prettier` **and any direct
+> `oxlint` / `oxfmt` devDependency** (devkit supplies them now), then replace
+> `eslint.config.mjs` / `prettier.config.mjs` with the `.oxlintrc.json` +
+> `oxfmt.config.ts` wiring shown here and point your scripts at the CLI.
+> TypeScript baseline is `^6 || ^7`: use TS7 unless a dependency still needs the
+> TypeScript **JS compiler API** (e.g. `@astrojs/check` peers `^5 || ^6`) — pin
+> TS6 there until it catches up.
 
 ### Shared configs are live in CI
 
@@ -138,10 +185,12 @@ is authoritative**. Repos without an `@gingur/devkit` dependency are untouched
 > **Fleet working rule:** a shared-config change lands **backward-compatible,
 > or is rolled out fleet-wide the same day** — live import puts every
 > consumer's next verify _and production deploy_ in the blast radius.
-> "Backward-compatible" includes **tool-version floors** (the
-> `peerDependencies` above): a config option requiring a newer oxlint / oxfmt /
-> TypeScript breaks consumers whose binaries lag devkit's floor (e.g.
-> vp-bundled oxlint/oxfmt), even when the change is otherwise additive.
+>
+> Since devkit **owns** oxlint and oxfmt as dependencies, a config option
+> requiring a newer one no longer strands a consumer on an older binary: bumping
+> devkit bumps the tool. The remaining floor risk is `typescript`, still a peer,
+> and any tool a consumer deliberately pins as its own devDependency — that pin
+> wins in the consumer's `.bin` for direct invocations.
 
 ## Conventions
 
@@ -210,7 +259,7 @@ When rotating a Cloudflare API token (annual, or on compromise / personnel chang
 
 - **CI** — the `infisical.secrets.scan.yml` reusable workflow scans each PR's commit
   range and fails the job on any finding.
-- **Pre-commit** — a husky hook runs `infisical scan git-changes --staged`, catching
+- **Pre-commit** — a git hook runs `infisical scan git-changes --staged`, catching
   secrets before they reach history (locally; bypassable with `--no-verify`, which CI
   backstops).
 
@@ -237,16 +286,54 @@ jobs:
 Requires the `infisical` CLI on the developer's PATH.
 
 ```jsonc
-// package.json
-"scripts": { "prepare": "husky" },
-"devDependencies": { "husky": "^9", "@gingur/devkit": "github:gingur/devkit#main" }
+// package.json — no husky; devkit installs the hooks itself
+"scripts": { "prepare": "devkit hooks install" },
+"devDependencies": { "@gingur/devkit": "github:gingur/devkit#main" }
 ```
 
 ```bash
-# .husky/pre-commit
-npx lint-staged
+# .husky/pre-commit  — the hook body, unchanged
+devkit staged
 infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs/infisical-scan.toml --redact --no-color
 ```
+
+`devkit hooks install` writes `.githooks/pre-commit` and points
+`core.hooksPath` at it. **Commit `.githooks/`.**
+
+> **Why this replaced husky.** husky points `core.hooksPath` at `.husky/_`,
+> which it generates during install and gitignores. `core.hooksPath` is
+> _repository_ config, so every `git worktree add` inherits it — while the
+> worktree has no `node_modules` and so no `.husky/_`. **Git does not warn when
+> `core.hooksPath` names a missing directory: it runs no hook and exits 0.**
+> Every commit from a worktree silently skipped every check. A tracked shim
+> exists in every worktree, finds the `devkit` binary in the main checkout when
+> the worktree has none, and fails loudly when it finds neither — because a hook
+> that cannot run must not look like one that passed.
+>
+> **Run `pnpm install` in a worktree you intend to commit from.** The fallback
+> covers the binary, not your configs: `lint-staged.config.js`, `oxfmt.config.ts`
+> and `.oxlintrc.json` all resolve `@gingur/devkit` relative to the worktree, and
+> a bare ESM specifier cannot be redirected. Without an install there, the hook
+> fails with a config-resolution error — loudly, which is the point, but it is a
+> failure rather than a fallback.
+>
+> **Migrating**, in this order — the first step matters most, because husky
+> would otherwise run once more and reset `core.hooksPath` back to `.husky/_`:
+>
+> 1. Replace `"prepare": "husky"` with `"prepare": "devkit hooks install"`.
+> 2. Drop `husky` from your devDependencies.
+> 3. Run `pnpm install` (or `devkit hooks install` directly).
+> 4. Commit `.githooks/`, `package.json` **and `pnpm-lock.yaml`** — step 3
+>    rewrites the lockfile, and omitting it fails the next
+>    `pnpm install --frozen-lockfile` in CI.
+> 5. Delete `.husky/_`. Keep `.husky/<hook>` — that body is still what runs.
+>
+> `devkit hooks install` stages `.githooks/` as part of its work, so expect it
+> in `git status` after any install.
+>
+> To audit a repo you do not control, check whether `core.hooksPath` points at
+> a directory that is tracked in git. If it is not, it exists only where an
+> install step has run.
 
 ## Reusable workflows reference
 

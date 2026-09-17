@@ -112,7 +112,7 @@ bin/                 the `devkit` CLI — the local half of the same contract
   `configs/lint-staged.config.js`. A `.ts` there breaks every consumer's
   pre-commit hook. Its types live in `bin/tools.d.mts`.
 - **Nothing invokes a managed tool by bare name.** oxlint, oxfmt, lint-staged
-  and husky are devkit's `dependencies`, so under pnpm they are absent from a
+  are devkit's `dependencies`, so under pnpm they are absent from a
   consumer's `node_modules/.bin`. Every call goes through `bin/tools.mjs`, which
   resolves them from devkit's own tree. A bare `oxlint` passes devkit's own CI
   (where it _is_ linked) and fails for every consumer — `bin/tools.test.ts`
@@ -328,7 +328,7 @@ name = "<app>-preview"   # placeholder; overridden per-PR by --name, no custom r
 Copy-paste preview + cleanup workflow examples live in
 [README → PR previews](./README.md).
 
-### Pre-commit (husky)
+### Pre-commit (consumer)
 
 `devkit hooks install` writes `.githooks/pre-commit` and points
 `core.hooksPath` at it. **Commit `.githooks/` — being tracked is the entire
@@ -344,11 +344,23 @@ exits 0. Three worktrees of `gingur/spinquest-lab` had been committing with
 every check silently skipped. A tracked shim exists in every worktree, so this
 cannot recur; `bin/hooks.test.ts` drives real `git worktree add` to prove it.
 
-The shim resolves tooling from the worktree, else from the main checkout via
-`git rev-parse --git-common-dir`, and **fails loudly** when it finds neither. A
-hook that cannot run must not look like a hook that passed. It is installed
-mode 755 for the same reason — git skips a non-executable hook with only a
-`hint:` on stderr.
+The shim finds the `devkit` binary in the worktree, else in the main checkout
+via `git rev-parse --git-common-dir`, and **fails loudly** when it finds
+neither — as it does when the hook body itself is missing. A hook that cannot
+run must not look like a hook that passed.
+
+**The fallback covers the binary, not the consumer's configs.**
+`lint-staged.config.js`, `oxfmt.config.ts` and `.oxlintrc.json` resolve
+`@gingur/devkit` relative to the worktree, and a bare ESM specifier cannot be
+redirected by `NODE_PATH`. Committing from a worktree that never ran
+`pnpm install` therefore fails on config resolution. Loud, not silent — but do
+not document it as working.
+
+The shim is staged with `git update-index --chmod=+x`, never `chmodSync`. On
+Windows `chmodSync` cannot set a POSIX bit and Git for Windows runs with
+`core.filemode=false`, so a shim committed from there would be tracked `100644`
+— and git skips a non-executable hook with only a `hint:` on stderr, which is
+precisely the silent skip this replaced husky to avoid.
 
 Consumers wire the hook body to run `devkit staged` and
 `infisical scan git-changes --staged` (shared `configs/infisical-scan.toml`).

@@ -20,7 +20,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const CLI = fileURLToPath(new URL('./devkit.mjs', import.meta.url));
@@ -40,9 +40,16 @@ function git(cwd: string, ...args: string[]): string {
   }).trim();
 }
 
+/** A temp directory removed when the suite finishes, so runs do not leak. */
+function scratch(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  after(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
+}
+
 /** A repo with the devkit shim installed and a hook body that marks a file. */
 function repo() {
-  const dir = mkdtempSync(join(tmpdir(), 'devkit-hooks-'));
+  const dir = scratch('devkit-hooks-');
   const main = join(dir, 'main');
   mkdirSync(main);
   git(main, 'init', '-q', '-b', 'main', '.');
@@ -54,8 +61,7 @@ function repo() {
   writeFileSync(join(main, '.husky', 'pre-commit'), `echo RAN >> "$PWD/ran.txt"\n`);
 
   mkdirSync(join(main, '.githooks'));
-  writeFileSync(join(main, '.githooks', 'pre-commit'), readFileSync(SHIM));
-  execFileSync('chmod', ['755', join(main, '.githooks', 'pre-commit')]);
+  writeFileSync(join(main, '.githooks', 'pre-commit'), readFileSync(SHIM), { mode: 0o755 });
   git(main, 'config', 'core.hooksPath', '.githooks');
 
   writeFileSync(join(main, 'seed.txt'), 'seed\n');
@@ -135,11 +141,46 @@ test('the installed shim is executable and tracked-ready', () => {
 });
 
 test('devkit hooks install writes the shim and points core.hooksPath at it', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'devkit-install-'));
+  const dir = scratch('devkit-install-');
   git(dir, 'init', '-q', '-b', 'main', '.');
+
+  // Stand in for Git for Windows, which ignores the filesystem's exec bit. With
+  // chmodSync this assertion would pass on Linux and record 100644 on Windows —
+  // a shim committed from there would be silently inert for everyone, which is
+  // the failure this command exists to prevent. Only `update-index --chmod`
+  // survives this setting.
+  git(dir, 'config', 'core.filemode', 'false');
 
   const r = spawnSync(process.execPath, [CLI, 'hooks', 'install'], { cwd: dir, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(git(dir, 'config', '--get', 'core.hooksPath'), '.githooks');
-  assert.ok(statSync(join(dir, '.githooks', 'pre-commit')).mode & 0o111);
+
+  // The mode that matters is the one git RECORDS, not the one on disk.
+  assert.match(git(dir, 'ls-files', '-s', '.githooks/pre-commit'), /^100755 /);
+});
+
+test('hooks install outside a git repository is a no-op, not a failed install', () => {
+  // It runs from `prepare`, so it fires wherever dependencies are installed —
+  // including a Docker build that copies source without .git.
+  const dir = scratch('devkit-nogit-');
+  const r = spawnSync(process.execPath, [CLI, 'hooks', 'install'], { cwd: dir, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /not a git repository/);
+});
+
+test('a missing hook body fails loudly rather than passing silently', () => {
+  // The migration note says to delete `.husky/_`; deleting `.husky/` wholesale
+  // is one slip away, and that must not look like a commit that passed.
+  const { main } = repo();
+  rmSync(join(main, '.husky'), { recursive: true, force: true });
+
+  const r = commit(main, 'e.txt');
+  assert.notEqual(r.status, 0, 'commit succeeded with no hook body');
+  assert.match(r.stderr, /does not exist/);
+});
+
+test("devkit's own committed shim matches the one it installs", () => {
+  // Two copies of the same file; nothing else keeps them in step.
+  const tracked = fileURLToPath(new URL('../.githooks/pre-commit', import.meta.url));
+  assert.equal(readFileSync(tracked, 'utf8'), readFileSync(SHIM, 'utf8'));
 });

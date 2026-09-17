@@ -1,11 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { ParsedCommand } from '../../command.ts';
 
 const HOOKS_DIR = '.githooks';
+const BODY_DIR = '.husky';
 const SHIM = fileURLToPath(new URL('./shim.sh', import.meta.url));
 
 /** Hooks devkit installs a shim for. The shim dispatches on its own basename. */
@@ -19,18 +20,40 @@ export default {
   kind: 'parsed',
   describe: "Install devkit's git hooks",
   run() {
-    // Worktrees share the main checkout's git dir, so installing from one would
-    // write the shim into the wrong tree.
-    const root = git('rev-parse', '--show-toplevel');
+    // This runs from `prepare`, so it fires on every install — including ones
+    // with no git repository at all, such as a Docker build that copies source
+    // without .git. That is a normal condition, not a miswiring, and it must
+    // not fail the install.
+    let root: string;
+    try {
+      root = git('rev-parse', '--show-toplevel');
+    } catch {
+      console.log('devkit: not a git repository — skipping hook install');
+      return;
+    }
+
     const dir = join(root, HOOKS_DIR);
     mkdirSync(dir, { recursive: true });
 
     for (const hook of HOOKS) {
       const path = join(dir, hook);
       copyFileSync(SHIM, path);
-      // Git skips a hook that is not executable, emitting only a `hint:` line —
-      // another way for a hook to be absent without looking absent.
-      chmodSync(path, 0o755);
+
+      // NOT chmodSync. On Windows it cannot set a POSIX exec bit, and Git for
+      // Windows runs with core.filemode=false, so the tracked mode would be
+      // 100644 — and git skips a non-executable hook with only a `hint:` on
+      // stderr. A shim committed from Windows would therefore be silently
+      // inert for everyone, which is the exact failure this command exists to
+      // prevent. update-index --chmod is honoured regardless of core.filemode.
+      git('update-index', '--add', '--chmod=+x', `${HOOKS_DIR}/${hook}`);
+
+      // The shim runs the body and refuses when it is missing, so say so at
+      // install time rather than at the first commit.
+      if (!existsSync(join(root, BODY_DIR, hook))) {
+        console.log(
+          `devkit: no ${BODY_DIR}/${hook} yet — create it, or the ${hook} hook will fail`,
+        );
+      }
     }
 
     git('config', 'core.hooksPath', HOOKS_DIR);

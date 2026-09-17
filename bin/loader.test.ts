@@ -5,20 +5,27 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const LOADER = fileURLToPath(new URL('./loader.mjs', import.meta.url));
 
 /** Run `source` as a .ts file through the loader, from a scratch directory. */
 function runTs(source: string) {
-  const dir = mkdtempSync(join(tmpdir(), 'devkit-loader-'));
+  const dir = scratch('devkit-loader-');
   const file = join(dir, 'probe.ts');
   writeFileSync(file, source);
   return spawnSync(process.execPath, ['--import', LOADER, file], { encoding: 'utf8' });
+}
+
+/** A temp directory removed when the suite finishes, so runs do not leak. */
+function scratch(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  after(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
 }
 
 test('real TypeScript syntax runs', () => {

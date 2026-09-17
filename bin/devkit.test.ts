@@ -5,16 +5,23 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const CLI = fileURLToPath(new URL('./devkit.mjs', import.meta.url));
 
 function devkit(args: string[]) {
   return spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' });
+}
+
+/** A temp directory removed when the suite finishes, so runs do not leak. */
+function scratch(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  after(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
 }
 
 test('no command prints usage listing every command, and exits 0', () => {
@@ -99,7 +106,7 @@ test('lint does not walk node_modules, with no .gitignore and no local config', 
   // them only from a config at the repo root, never from one inside
   // node_modules. Without the flags lint.ts injects, this walks the whole tree:
   // a real consumer fixture reported 2366 files instead of 2.
-  const dir = mkdtempSync(join(tmpdir(), 'devkit-ignore-'));
+  const dir = scratch('devkit-ignore-');
   mkdirSync(join(dir, 'node_modules', 'junk'), { recursive: true });
   writeFileSync(join(dir, 'app.js'), 'export const a = 1;\n');
   writeFileSync(join(dir, 'node_modules', 'junk', 'bad.js'), 'var x = 1; x = 2;\n');

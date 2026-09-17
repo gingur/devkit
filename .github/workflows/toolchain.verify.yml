@@ -90,12 +90,12 @@ jobs:
       - name: Devkit freshness
         if: ${{ inputs.devkitFreshness }}
         run: |
-          if git diff --quiet -- pnpm-lock.yaml; then
-            echo "pnpm-lock.yaml pins the current @gingur/devkit"
+          if git diff --quiet -- pnpm-lock.yaml .githooks; then
+            echo "lockfile and hooks are current for @gingur/devkit"
             exit 0
           fi
           echo "::error title=Stale @gingur/devkit::The committed pnpm-lock.yaml pins an older @gingur/devkit than its specifier resolves to. Your pre-commit hook is running different rules than CI. Run 'pnpm update @gingur/devkit' and commit the lockfile."
-          git --no-pager diff --stat -- pnpm-lock.yaml
+          git --no-pager diff --stat -- pnpm-lock.yaml .githooks
           exit 1
 
       - name: Format

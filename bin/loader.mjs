@@ -19,6 +19,8 @@ import { fileURLToPath } from 'node:url';
 
 import { transformSync } from 'oxc-transform';
 
+// ESM TypeScript only. `.cts` is deliberately absent: it would need
+// `format: 'commonjs'` below, and nothing here is CommonJS.
 const TYPESCRIPT = /\.(?:m?ts|tsx)$/;
 
 process.setSourceMapsEnabled(true);

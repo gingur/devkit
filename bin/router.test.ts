@@ -3,11 +3,11 @@
 // register looks exactly like a file that was never added.
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { Command } from 'commander';
@@ -31,6 +31,13 @@ async function build() {
   const program = new Command('devkit');
   const routes = await register(program, COMMANDS);
   return { program, routes };
+}
+
+/** A temp directory removed when the suite finishes, so runs do not leak. */
+function scratch(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  after(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
 }
 
 test('every discovered route becomes a registered command', async () => {
@@ -91,7 +98,7 @@ test('a parsed command is handed its options and its arguments', async () => {
   // The other half of the kind split, and the half nothing else reaches: the
   // only parsed command devkit ships takes neither flags nor arguments, so a
   // fixture is the only way to assert the router wires them the right way round.
-  const dir = mkdtempSync(join(tmpdir(), 'devkit-router-'));
+  const dir = scratch('devkit-router-');
   const received = join(dir, 'received.json');
   writeFileSync(
     join(dir, 'probe.ts'),

@@ -118,7 +118,7 @@ Two consequences worth knowing before you bump devkit:
 
 ### The `devkit` CLI
 
-`oxlint`, `oxfmt`, `lint-staged` and `husky` are devkit's own **dependencies**.
+`oxlint`, `oxfmt` and `lint-staged` are devkit's own **dependencies**.
 A consumer declares `@gingur/devkit` and nothing else for this toolchain, and
 devkit owns the versions.
 
@@ -127,12 +127,12 @@ devkit's dependencies are **not** in your `node_modules/.bin`. A bare `oxlint`
 in a script or a lint-staged task will not resolve. Only `devkit` is linked, and
 every subcommand resolves its tool out of devkit's own install tree.
 
-| Command                 | Runs                              |
-| ----------------------- | --------------------------------- |
-| `devkit lint [...args]` | `oxlint`                          |
-| `devkit fmt [...args]`  | `oxfmt`                           |
-| `devkit staged`         | `lint-staged`                     |
-| `devkit hooks install`  | `husky`, installing the git hooks |
+| Command                 | Runs                                          |
+| ----------------------- | --------------------------------------------- |
+| `devkit lint [...args]` | `oxlint`                                      |
+| `devkit fmt [...args]`  | `oxfmt`                                       |
+| `devkit staged`         | `lint-staged`                                 |
+| `devkit hooks install`  | installs `.githooks/` + sets `core.hooksPath` |
 
 `devkit --help` lists them; `devkit <group>` lists one group's commands.
 
@@ -142,7 +142,7 @@ through untouched, so a flag devkit does not model still works —
 answers with oxlint's help rather than devkit's. `devkit hooks install` stays an
 explicit consumer action (a `prepare` script) rather than a devkit package
 lifecycle, so installing dependencies never runs a script and pnpm never needs
-an `allowBuilds` entry.
+an `onlyBuiltDependencies` entry.
 
 Exit codes: a wrapped tool's code propagates unchanged, a signal becomes
 `128 + signum`, and a devkit usage error is `2`.
@@ -259,7 +259,7 @@ When rotating a Cloudflare API token (annual, or on compromise / personnel chang
 
 - **CI** — the `infisical.secrets.scan.yml` reusable workflow scans each PR's commit
   range and fails the job on any finding.
-- **Pre-commit** — a husky hook runs `infisical scan git-changes --staged`, catching
+- **Pre-commit** — a git hook runs `infisical scan git-changes --staged`, catching
   secrets before they reach history (locally; bypassable with `--no-verify`, which CI
   backstops).
 
@@ -306,9 +306,16 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 > worktree has no `node_modules` and so no `.husky/_`. **Git does not warn when
 > `core.hooksPath` names a missing directory: it runs no hook and exits 0.**
 > Every commit from a worktree silently skipped every check. A tracked shim
-> exists in every worktree, resolves tooling from the main checkout when the
-> worktree has none, and fails loudly when it finds neither — because a hook
+> exists in every worktree, finds the `devkit` binary in the main checkout when
+> the worktree has none, and fails loudly when it finds neither — because a hook
 > that cannot run must not look like one that passed.
+>
+> **Run `pnpm install` in a worktree you intend to commit from.** The fallback
+> covers the binary, not your configs: `lint-staged.config.js`, `oxfmt.config.ts`
+> and `.oxlintrc.json` all resolve `@gingur/devkit` relative to the worktree, and
+> a bare ESM specifier cannot be redirected. Without an install there, the hook
+> fails with a config-resolution error — loudly, which is the point, but it is a
+> failure rather than a fallback.
 >
 > **Migrating:** run `devkit hooks install`, commit `.githooks/`, drop `husky`
 > from your devDependencies, and delete `.husky/_`. Your `.husky/<hook>` body

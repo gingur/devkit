@@ -246,6 +246,19 @@ resolve the dependency **specifier** fresh every run — `#main` → branch head
 future `#semver:` tag → range-bounded. No-op when the dep is absent. Local dev
 catches up via `pnpm update @gingur/devkit`; **CI is authoritative**.
 
+**`ignorePatterns` in `configs/oxlintrc.base.json` does not reach consumers.**
+oxlint honours that key only from a config at the repo root; one shipped inside
+`node_modules` contributes none. Verified: from there, neither `node_modules/**`
+nor `**/node_modules/**` nor `../../../**` has any effect, and passing the file
+as `-c` does not help either — while the identical pattern in a consumer's own
+`.oxlintrc.json` works immediately. A consumer extending the base config
+inherits its rules and silently none of its ignores. `bin/commands/lint.ts`
+therefore reads that list and passes it as `--ignore-pattern` flags, which does
+work; the key stays the single definition. Do not "fix" an ignore problem by
+adding patterns to the shared config — they will do nothing.
+
+`oxfmt` does not share this hole; it skips `node_modules` on its own.
+
 **Working rule:** shared-config changes land backward-compatible, or roll out
 fleet-wide the same day. Tool versions are no longer a floor to reason about for
 oxlint and oxfmt — devkit owns them as dependencies, so bumping devkit bumps the

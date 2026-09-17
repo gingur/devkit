@@ -5,6 +5,9 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -89,4 +92,24 @@ test('a flag after a positional still reaches the tool', () => {
 test("a tool's non-zero exit becomes the CLI's exit code", () => {
   const { status } = devkit(['lint', '--not-a-real-flag']);
   assert.equal(status, 1);
+});
+
+test('lint does not walk node_modules, with no .gitignore and no local config', () => {
+  // The shared config's ignorePatterns are inert for consumers — oxlint honours
+  // them only from a config at the repo root, never from one inside
+  // node_modules. Without the flags lint.ts injects, this walks the whole tree:
+  // a real consumer fixture reported 2366 files instead of 2.
+  const dir = mkdtempSync(join(tmpdir(), 'devkit-ignore-'));
+  mkdirSync(join(dir, 'node_modules', 'junk'), { recursive: true });
+  writeFileSync(join(dir, 'app.js'), 'export const a = 1;\n');
+  writeFileSync(join(dir, 'node_modules', 'junk', 'bad.js'), 'var x = 1; x = 2;\n');
+
+  const { stdout, stderr } = spawnSync(process.execPath, [CLI, 'lint'], {
+    cwd: dir,
+    encoding: 'utf8',
+  });
+
+  const scanned = (stdout + stderr).match(/on (\d+) files?/);
+  assert.ok(scanned, `no file count in output:\n${stdout}${stderr}`);
+  assert.equal(scanned[1], '1', 'lint reached into node_modules');
 });

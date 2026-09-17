@@ -29,10 +29,12 @@ jobs:
       # Catches shell breakage in composite actions before it ships fleet-wide.
       # No-op until a composite adds a *.sh; kept so the guard exists the moment
       # one does.
+      # bin/ is covered too: the git-hook shim ships as shell and a syntax error
+      # in it would disable a consumer's hooks.
       - name: Shell syntax
         run: |
           set -euo pipefail
-          mapfile -t files < <(git ls-files 'actions/**/*.sh')
+          mapfile -t files < <(git ls-files 'actions/**/*.sh' 'bin/**/*.sh')
           printf 'checking %s shell file(s)\n' "${#files[@]}"
           for f in "${files[@]}"; do bash -n "$f"; done
 

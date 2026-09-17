@@ -37,7 +37,6 @@
   },
   "dependencies": {
     "commander": "^15.0.0",
-    "husky": "^9",
     "lint-staged": "^16",
     "oxc-transform": "0.150.0",
     "oxfmt": "0.58.0",

@@ -74,7 +74,7 @@ test('--help on a pass-through command reaches the tool, not devkit', () => {
 test('--help on a parsed command is answered by devkit', () => {
   const { status, stdout, stderr } = devkit(['hooks', 'install', '--help']);
   assert.equal(status, 0);
-  assert.match(stdout + stderr, /Install husky/i);
+  assert.match(stdout + stderr, /Install devkit's git hooks/i);
 });
 
 test('a flag devkit does not model still reaches the tool', () => {

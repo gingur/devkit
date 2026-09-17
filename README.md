@@ -286,16 +286,37 @@ jobs:
 Requires the `infisical` CLI on the developer's PATH.
 
 ```jsonc
-// package.json — husky is devkit's dependency, so it is not declared here
+// package.json — no husky; devkit installs the hooks itself
 "scripts": { "prepare": "devkit hooks install" },
 "devDependencies": { "@gingur/devkit": "github:gingur/devkit#main" }
 ```
 
 ```bash
-# .husky/pre-commit
+# .husky/pre-commit  — the hook body, unchanged
 devkit staged
 infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs/infisical-scan.toml --redact --no-color
 ```
+
+`devkit hooks install` writes `.githooks/pre-commit` and points
+`core.hooksPath` at it. **Commit `.githooks/`.**
+
+> **Why this replaced husky.** husky points `core.hooksPath` at `.husky/_`,
+> which it generates during install and gitignores. `core.hooksPath` is
+> _repository_ config, so every `git worktree add` inherits it — while the
+> worktree has no `node_modules` and so no `.husky/_`. **Git does not warn when
+> `core.hooksPath` names a missing directory: it runs no hook and exits 0.**
+> Every commit from a worktree silently skipped every check. A tracked shim
+> exists in every worktree, resolves tooling from the main checkout when the
+> worktree has none, and fails loudly when it finds neither — because a hook
+> that cannot run must not look like one that passed.
+>
+> **Migrating:** run `devkit hooks install`, commit `.githooks/`, drop `husky`
+> from your devDependencies, and delete `.husky/_`. Your `.husky/<hook>` body
+> stays exactly where it is.
+>
+> To audit a repo you do not control, check whether `core.hooksPath` points at
+> a directory that is tracked in git. If it is not, it exists only where an
+> install step has run.
 
 ## Reusable workflows reference
 

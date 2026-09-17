@@ -330,12 +330,28 @@ Copy-paste preview + cleanup workflow examples live in
 
 ### Pre-commit (husky)
 
-Consumers wire a husky `pre-commit` hook that runs `devkit staged` and
+`devkit hooks install` writes `.githooks/pre-commit` and points
+`core.hooksPath` at it. **Commit `.githooks/` — being tracked is the entire
+point.** The hook body stays at `.husky/<hook>`, so adopting this costs no
+edits; the shim runs it.
+
+**Why not husky.** husky points `core.hooksPath` at `.husky/_`, which it
+generates during install and gitignores. `core.hooksPath` is _repository_
+config, so every `git worktree add` inherits it — but the worktree has no
+`node_modules` and therefore no `.husky/_`. Git does not warn when
+`core.hooksPath` names a directory that does not exist: it runs no hook and
+exits 0. Three worktrees of `gingur/spinquest-lab` had been committing with
+every check silently skipped. A tracked shim exists in every worktree, so this
+cannot recur; `bin/hooks.test.ts` drives real `git worktree add` to prove it.
+
+The shim resolves tooling from the worktree, else from the main checkout via
+`git rev-parse --git-common-dir`, and **fails loudly** when it finds neither. A
+hook that cannot run must not look like a hook that passed. It is installed
+mode 755 for the same reason — git skips a non-executable hook with only a
+`hint:` on stderr.
+
+Consumers wire the hook body to run `devkit staged` and
 `infisical scan git-changes --staged` (shared `configs/infisical-scan.toml`).
 Requires the `infisical` CLI on PATH. CI (`infisical.secrets.scan.yml`) is the
-enforced backstop since `--no-verify` skips the hook.
-
-Husky is installed by `devkit hooks install` wired to a `prepare` script, never
-by a devkit lifecycle. `devkit` resolves inside the hook because husky's `_/h`
-wrapper prepends `node_modules/.bin` to PATH — verified against a real commit,
-not assumed.
+enforced backstop since `--no-verify` skips the hook — keep it wired in every
+consumer, because it is what covers a bypassed local hook.

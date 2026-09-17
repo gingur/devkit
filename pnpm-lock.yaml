@@ -11,9 +11,6 @@ importers:
       commander:
         specifier: ^15.0.0
         version: 15.0.0
-      husky:
-        specifier: ^9
-        version: 9.1.7
       lint-staged:
         specifier: ^16
         version: 16.4.0
@@ -570,11 +567,6 @@ packages:
     resolution: {integrity: sha512-QRbvDIbx6YklUe6RxeTeleMR0yv3cYH6PsPZHcnVn7xv7zO1BHN8r0XETu8n6Ye3Q+ahtSarc3WgtNWmehIBfA==}
     engines: {node: '>=18'}
 
-  husky@9.1.7:
-    resolution: {integrity: sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA==}
-    engines: {node: '>=18'}
-    hasBin: true
-
   is-fullwidth-code-point@5.1.0:
     resolution: {integrity: sha512-5XHYaSyiqADb4RnZ1Bdad6cPp8Toise4TzEjcOYDHZkTCbKgiUl7WTUCpNWHuxmDt91wnsZBc9xinNzopv3JMQ==}
     engines: {node: '>=18'}
@@ -961,8 +953,6 @@ snapshots:
   eventemitter3@5.0.4: {}
 
   get-east-asian-width@1.6.0: {}
-
-  husky@9.1.7: {}
 
   is-fullwidth-code-point@5.1.0:
     dependencies:

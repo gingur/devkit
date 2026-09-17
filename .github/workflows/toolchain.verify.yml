@@ -48,6 +48,11 @@ on:
         type: string
         required: false
         default: 'build'
+      devkitFreshness:
+        description: 'Fail when the committed lockfile pins a stale @gingur/devkit. Off for repos that deliberately hold it back.'
+        type: boolean
+        required: false
+        default: true
       runner:
         description: 'Runner label.'
         type: string
@@ -72,6 +77,26 @@ jobs:
           node: ${{ inputs.node }}
           pnpm: ${{ inputs.pnpm }}
           bun: ${{ inputs.bun }}
+
+      # toolchain.setup re-resolves @gingur/devkit past the lockfile pin, so CI
+      # runs against the specifier's head while local development runs against
+      # whatever the lockfile froze. When those differ, the pre-commit hook and
+      # CI enforce different rules — gingur/spinquest-lab sat 3 commits behind
+      # with an inverted lint-staged task order, so commits passed the hook and
+      # failed `oxfmt --check` here.
+      #
+      # A dirty lockfile after the refresh IS that drift, so fail the PR where
+      # it is actionable. Repos without the dependency see no diff and no check.
+      - name: Devkit freshness
+        if: ${{ inputs.devkitFreshness }}
+        run: |
+          if git diff --quiet -- pnpm-lock.yaml; then
+            echo "pnpm-lock.yaml pins the current @gingur/devkit"
+            exit 0
+          fi
+          echo "::error title=Stale @gingur/devkit::The committed pnpm-lock.yaml pins an older @gingur/devkit than its specifier resolves to. Your pre-commit hook is running different rules than CI. Run 'pnpm update @gingur/devkit' and commit the lockfile."
+          git --no-pager diff --stat -- pnpm-lock.yaml
+          exit 1
 
       - name: Format
         if: ${{ inputs.format != '' }}

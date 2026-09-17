@@ -73,7 +73,7 @@ function repo() {
   return { dir, main };
 }
 
-function commit(cwd: string, name: string) {
+function commit(cwd: string, name: string, env: Record<string, string> = {}) {
   writeFileSync(join(cwd, name), 'x\n');
   git(cwd, 'add', name);
   return spawnSync('git', ['commit', '-m', name], {
@@ -85,6 +85,7 @@ function commit(cwd: string, name: string) {
       GIT_AUTHOR_EMAIL: 't@t',
       GIT_COMMITTER_NAME: 't',
       GIT_COMMITTER_EMAIL: 't@t',
+      ...env,
     },
   });
 }
@@ -186,7 +187,7 @@ test('a missing hook body fails loudly rather than passing silently', () => {
   assert.match(r.stderr, /does not exist/);
 });
 
-test('install sets the filesystem exec bit even when the source lost it', async () => {
+test('install sets the filesystem exec bit even when the source lost it', () => {
   // `pnpm pack` normalises everything except package.json `bin` entries to 644,
   // so a consumer who installed a packed tarball has shim.sh at 644.
   // copyFileSync carries the SOURCE's mode, so without chmodSync the installed
@@ -232,6 +233,16 @@ test('install works when prepare runs from a subdirectory', () => {
   assert.equal(r.status, 0, r.stderr);
   assert.equal(git(dir, 'config', '--get', 'core.hooksPath'), '.githooks');
   assert.match(git(dir, 'ls-files', '-s', '.githooks/pre-commit'), /^100755 /);
+});
+
+test('an exported CDPATH does not corrupt the resolved paths', () => {
+  // `cd` echoes its destination when CDPATH is set, which would land inside the
+  // command substitutions that resolve $here and $main — the hook then refuses
+  // a commit while naming a directory that does exist.
+  const { main } = repo();
+  const r = commit(main, 'cdpath.txt', { CDPATH: '.' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(readFileSync(join(main, 'ran.txt'), 'utf8'), /RAN/);
 });
 
 test("devkit's own committed shim matches the one it installs", () => {

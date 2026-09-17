@@ -70,6 +70,16 @@ export default {
       }
     }
 
+    // The shim looks for <root>/node_modules/.bin. In a workspace that declares
+    // devkit in a package rather than at the root, pnpm creates a root
+    // node_modules with no .bin — the install succeeds and then every commit is
+    // refused. It fails closed, but the first commit is a late and confusing
+    // place to learn it, and the obvious remedy (`pnpm install`) is a dead end.
+    if (!existsSync(join(root, 'node_modules', '.bin'))) {
+      console.log(`devkit: ${root}/node_modules/.bin does not exist`);
+      console.log('devkit: hooks will refuse to run — declare @gingur/devkit at the repo root');
+    }
+
     git(root, 'config', 'core.hooksPath', HOOKS_DIR);
 
     console.log(`devkit: installed ${HOOKS.map((h) => `${HOOKS_DIR}/${h}`).join(', ')}`);

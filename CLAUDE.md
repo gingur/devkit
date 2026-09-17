@@ -369,9 +369,16 @@ either one reproduces the silent skip this replaced husky to avoid, so do not
   checkout receives. On Windows `chmodSync` cannot set a POSIX bit and Git for
   Windows runs `core.filemode=false`, so the recorded mode would be `100644`.
 
-Every git call passes the resolved repo root as its cwd: `prepare` runs wherever
+Every git call _after the first_ passes the resolved repo root as its cwd — the
+first cannot, since it is the one resolving the root. `prepare` runs wherever
 dependencies are installed, which in a workspace is a package subdirectory, and
-`update-index` takes a path relative to the process directory.
+`update-index` takes a path relative to the process directory; run from the
+wrong one it fails after writing the shim and before setting `core.hooksPath`.
+
+For the same reason `toolchain.verify.yml`'s freshness check spells the hooks
+pathspec `:/.githooks`. That step inherits `working-directory`, and an
+unanchored pathspec would look under `cwd` for a file that is always at the
+root — reporting success without having checked.
 
 Consumers wire the hook body to run `devkit staged` and
 `infisical scan git-changes --staged` (shared `configs/infisical-scan.toml`).

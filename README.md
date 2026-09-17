@@ -323,7 +323,9 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 > 1. Replace `"prepare": "husky"` with `"prepare": "devkit hooks install"`.
 > 2. Drop `husky` from your devDependencies.
 > 3. Run `pnpm install` (or `devkit hooks install` directly).
-> 4. Commit `.githooks/` and `package.json`.
+> 4. Commit `.githooks/`, `package.json` **and `pnpm-lock.yaml`** — step 3
+>    rewrites the lockfile, and omitting it fails the next
+>    `pnpm install --frozen-lockfile` in CI.
 > 5. Delete `.husky/_`. Keep `.husky/<hook>` — that body is still what runs.
 >
 > `devkit hooks install` stages `.githooks/` as part of its work, so expect it

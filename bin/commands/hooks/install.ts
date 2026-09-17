@@ -1,6 +1,5 @@
-/** @import { ParsedCommand } from '../../command.d.ts' */
+import type { ParsedCommand } from '../../command.ts';
 
-/** @type {ParsedCommand} */
 export default {
   kind: 'parsed',
   describe: "Install husky's git hooks",
@@ -11,4 +10,4 @@ export default {
     const message = husky();
     if (message) console.log(message);
   },
-};
+} satisfies ParsedCommand;

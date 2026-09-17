@@ -1,10 +1,5 @@
 // The contract every file under commands/ implements.
 //
-// Types only — bin/ is JavaScript, checked through JSDoc. Node refuses to strip
-// types for files under node_modules (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING,
-// confirmed on 22 and 24, no flag lifts it), which is exactly where a consumer
-// runs devkit from. So the runtime is .mjs and the types live here.
-//
 // `kind` is the load-bearing field. devkit's commands split into two sorts with
 // opposite flag semantics, and the router needs to know which it is *before* it
 // parses anything:
@@ -35,7 +30,7 @@ export interface ParsedCommand<Options = Record<string, unknown>> {
 
 export type CommandModule = PassthroughCommand | ParsedCommand;
 
-/** Optional `index.mjs` in a command directory, describing the group itself. */
+/** Optional `index.ts` in a command directory, describing the group itself. */
 export interface CommandGroup {
   describe: string;
 }

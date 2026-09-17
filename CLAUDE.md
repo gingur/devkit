@@ -79,30 +79,49 @@ bin/                 the `devkit` CLI — the local half of the same contract
 
 - **`bin/` ships as source, never built.** Consumers install devkit as a git
   dependency (`github:gingur/devkit#main`), so whatever is committed is what
-  runs. Plain `.mjs` with a shebang; no bundler, no `prepare` script — adding an
-  install lifecycle would force consumers into a pnpm `allowBuilds` entry.
-- **`bin/` cannot be TypeScript, and this is settled — do not retry it.** Node's
-  type stripping is refused for any file under `node_modules`
+  runs. No bundler, no `prepare` script — adding an install lifecycle would
+  force consumers into a pnpm `onlyBuiltDependencies` entry.
+- **`bin/` is TypeScript, and it runs via a loader — not Node's own stripping.**
+  Node refuses to strip types for any file under `node_modules`
   (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), which is exactly where a
-  consumer runs devkit from. Confirmed on Node 22 and 24, for `.ts`, `.mts` and
-  `.cts` alike; no flag lifts it, and it is deliberate — the restriction exists
-  to stop packages shipping TypeScript. Types come from JSDoc against
-  `bin/command.d.ts`, checked by `tsc` with `checkJs`. A trivial fixture will
-  appear to disprove this: a dependency-free package gets symlinked _outside_
-  `node_modules` and strips fine. devkit has dependencies, so it does not.
-  (Bun strips TS under `node_modules` happily — adopting it would mean requiring
-  Bun on every consumer and every CI job, which no consumer declares today.)
+  consumer runs devkit from. That is deliberate, it applies to `.ts`/`.mts`/`.cts`
+  alike on Node 22 and 24, no flag lifts it, and
+  [nodejs/node#57215](https://github.com/nodejs/node/issues/57215) is closed
+  `not_planned` — there is nothing to wait for. So `bin/devkit.mjs` installs
+  `bin/loader.mjs` (oxc-transform via `module.registerHooks`) and imports
+  `cli.ts`. `devkit.mjs`, `loader.mjs` and `tools.mjs` stay JavaScript because
+  the loader cannot transform the files that install it.
+  - **oxc-transform, not tsx:** no install script (tsx pulls esbuild, whose
+    blocked `postinstall` prints a warning on every consumer install), a third
+    the size, and the same vendor as the `oxlint`/`oxfmt` pinned here. It is
+    pre-1.0 and its API has already churned — **pin it exactly**, as with
+    `oxfmt`.
+  - **Two details in `loader.mjs` fail silently if removed.** oxc _returns_
+    syntax errors instead of throwing, so without the `errors.length` check a
+    broken file yields wrong code; and without the inline sourcemap every stack
+    trace points at the post-transform line. `bin/loader.test.ts` pins both.
+  - **The loader does no type checking.** `tsc --noEmit` in `verify` is the only
+    thing that does.
+  - **Beware a fixture that appears to disprove all this.** A dependency-free
+    package gets symlinked _outside_ `node_modules` and strips fine; devkit has
+    dependencies, so it does not. Test with `pnpm pack` + install the tarball,
+    and assert `readlink -f` lands inside `node_modules`.
+- **`bin/tools.mjs` must stay JavaScript.** It is the one module loaded from two
+  runtimes: the CLI (which has the loader) and lint-staged, which devkit spawns
+  as a plain `node` child with no loader, reaching it through
+  `configs/lint-staged.config.js`. A `.ts` there breaks every consumer's
+  pre-commit hook. Its types live in `bin/tools.d.mts`.
 - **Nothing invokes a managed tool by bare name.** oxlint, oxfmt, lint-staged
   and husky are devkit's `dependencies`, so under pnpm they are absent from a
   consumer's `node_modules/.bin`. Every call goes through `bin/tools.mjs`, which
   resolves them from devkit's own tree. A bare `oxlint` passes devkit's own CI
-  (where it _is_ linked) and fails for every consumer — `bin/tools.test.mjs`
+  (where it _is_ linked) and fails for every consumer — `bin/tools.test.ts`
   exists to catch exactly that.
-- **Commands are files.** `bin/commands/hooks/install.mjs` is
-  `devkit hooks install`; `bin/router.mjs` discovers the tree and registers it
+- **Commands are files.** `bin/commands/hooks/install.ts` is
+  `devkit hooks install`; `bin/router.ts` discovers the tree and registers it
   on Commander. Adding a command means adding a file and nothing else, and
-  `bin/router.test.mjs` asserts the tree matches the registered paths so a file
-  cannot silently fail to register. An `index.mjs` in a directory describes the
+  `bin/router.test.ts` asserts the tree matches the registered paths so a file
+  cannot silently fail to register. An `index.ts` in a directory describes the
   group rather than being a command.
 - **Every command declares a `kind`, and the two are opposites.**
   `passthrough` (`lint`, `fmt`, `staged`) means devkit parses _nothing_ after
@@ -115,7 +134,7 @@ bin/                 the `devkit` CLI — the local half of the same contract
   specs at registration time to build help and reject unknown flags, so lazy
   per-command loading is not available. Keep heavy work (clients, schemas)
   behind a lazy `import()` _inside_ the handler instead — see
-  `commands/hooks/install.mjs`.
+  `commands/hooks/install.ts`.
 - **Workflows are thin glue** over single-purpose composite actions. Logic that's
   reused across workflows is extracted to a composite so it lives **once**.
 - **One concern per action.** If a workflow grows conditionals for a second

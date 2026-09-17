@@ -3,11 +3,10 @@
   "compilerOptions": {
     "noEmit": true,
 
-    // bin/ is JavaScript, checked through JSDoc. Node refuses to strip types
-    // for files under node_modules, which is exactly where a consumer runs
-    // devkit from, so shipping .ts is not an option — see CLAUDE.md.
-    "allowJs": true,
-    "checkJs": true,
+    // Nothing here is compiled — bin/devkit.mjs installs a loader that
+    // transforms .ts at run time (see bin/loader.mjs). So the specifier is the
+    // real filename: './router.ts', not './router.js'.
+    "allowImportingTsExtensions": true,
 
     // devkit's own bin/ only; the shared base deliberately declares no module
     // system, so consumers pick their own.
@@ -15,5 +14,5 @@
     "target": "esnext",
     "types": ["node"]
   },
-  "include": ["bin/**/*.mjs", "bin/**/*.d.ts"]
+  "include": ["bin/**/*.ts", "bin/**/*.d.mts"]
 }

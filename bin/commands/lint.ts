@@ -1,12 +1,10 @@
-/** @import { PassthroughCommand } from '../command.d.ts' */
-
+import type { PassthroughCommand } from '../command.ts';
 import { runTool } from '../tools.mjs';
 
-/** @type {PassthroughCommand} */
 export default {
   kind: 'passthrough',
   describe: 'Run oxlint over the repo',
   run(argv) {
     runTool('oxlint', argv);
   },
-};
+} satisfies PassthroughCommand;

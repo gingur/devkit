@@ -41,7 +41,7 @@ for (const pkg of MANAGED) {
     // is the property that matters, not the quoting style.
     const quoted = toolCommand(pkg).match(/"(?:[^"\\]|\\.)*"/g);
     assert.deepEqual(
-      quoted?.map((s) => JSON.parse(s)),
+      quoted?.map((s) => JSON.parse(s) as string),
       toolArgv(pkg),
     );
   });

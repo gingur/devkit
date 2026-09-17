@@ -1,5 +1,5 @@
 // File-based routing: the directory structure under commands/ is the command
-// path. `commands/hooks/install.mjs` is `devkit hooks install`. Adding a command
+// path. `commands/hooks/install.ts` is `devkit hooks install`. Adding a command
 // means adding a file; nothing here changes.
 //
 // Command modules are imported eagerly, and that is deliberate rather than a
@@ -9,38 +9,27 @@
 // keeping command modules thin — metadata and a handler, with heavy work behind
 // a lazy import *inside* the handler.
 
-/** @import { CommandGroup, CommandModule, Route } from './command.d.ts' */
-
 import { readdir } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { Command } from 'commander';
 
-const COMMAND_EXT = '.mjs';
+import type { CommandGroup, CommandModule, Route } from './command.ts';
+
+const COMMAND_EXT = '.ts';
 const GROUP_FILE = 'index';
 
-/**
- * @param {string} name
- * @returns {boolean}
- */
-function isRoutable(name) {
+function isRoutable(name: string): boolean {
   return extname(name) === COMMAND_EXT && !name.includes('.test.');
 }
 
-/**
- * Walk a commands directory into routes, depth-first, alphabetically.
- *
- * @param {string} dir
- * @param {string[]} [prefix]
- * @returns {Promise<Route[]>}
- */
-export async function discover(dir, prefix = []) {
+/** Walk a commands directory into routes, depth-first, alphabetically. */
+export async function discover(dir: string, prefix: string[] = []): Promise<Route[]> {
   const entries = (await readdir(dir, { withFileTypes: true })).sort((a, b) =>
     a.name.localeCompare(b.name),
   );
-  /** @type {Route[]} */
-  const routes = [];
+  const routes: Route[] = [];
 
   for (const entry of entries) {
     const full = join(dir, entry.name);
@@ -48,7 +37,7 @@ export async function discover(dir, prefix = []) {
       routes.push(...(await discover(full, [...prefix, entry.name])));
     } else if (isRoutable(entry.name)) {
       const name = basename(entry.name, COMMAND_EXT);
-      // index.mjs describes the group it sits in; it is not itself a command.
+      // index.ts describes the group it sits in; it is not itself a command.
       if (name === GROUP_FILE) continue;
       routes.push({ path: [...prefix, name], file: full });
     }
@@ -57,26 +46,16 @@ export async function discover(dir, prefix = []) {
   return routes;
 }
 
-/**
- * @template T
- * @param {string} file
- * @returns {Promise<T>}
- */
-async function load(file) {
+async function load<T>(file: string): Promise<T> {
   // A bare Windows path is not a valid ESM specifier.
-  return (await import(pathToFileURL(file).href)).default;
+  return (await import(pathToFileURL(file).href)).default as T;
 }
 
 /**
  * Find or create the Command that owns `path`'s final segment, creating
  * intermediate group commands as needed.
- *
- * @param {Command} program
- * @param {string[]} path
- * @param {string} dir
- * @returns {Promise<Command>}
  */
-async function parentOf(program, path, dir) {
+async function parentOf(program: Command, path: string[], dir: string): Promise<Command> {
   let parent = program;
 
   for (const [depth, segment] of path.slice(0, -1).entries()) {
@@ -87,8 +66,7 @@ async function parentOf(program, path, dir) {
     }
 
     const groupFile = join(dir, ...path.slice(0, depth + 1), `${GROUP_FILE}${COMMAND_EXT}`);
-    /** @type {CommandGroup | undefined} */
-    const meta = await load(groupFile).catch(() => undefined);
+    const meta = await load<CommandGroup | undefined>(groupFile).catch(() => undefined);
 
     const group = new Command(segment).description(meta?.describe ?? `${segment} commands`);
     parent.addCommand(group);
@@ -98,12 +76,10 @@ async function parentOf(program, path, dir) {
   return parent;
 }
 
-/**
- * @param {Command} command
- * @param {Extract<CommandModule, { kind: 'passthrough' }>} module
- * @returns {void}
- */
-function applyPassthrough(command, module) {
+function applyPassthrough(
+  command: Command,
+  module: Extract<CommandModule, { kind: 'passthrough' }>,
+): void {
   command
     .argument('[args...]')
     // Without this an unmodelled flag is an error; with it, it becomes an
@@ -116,32 +92,21 @@ function applyPassthrough(command, module) {
     // Commander would otherwise answer `devkit lint --help` itself. A blind
     // wrapper must let the tool answer for its own flags.
     .helpOption(false)
-    .action((args) => module.run(args));
+    .action((args: string[]) => module.run(args));
 }
 
-/**
- * @param {Command} command
- * @param {Extract<CommandModule, { kind: 'parsed' }>} module
- * @returns {void}
- */
-function applyParsed(command, module) {
+function applyParsed(command: Command, module: Extract<CommandModule, { kind: 'parsed' }>): void {
   module.configure?.(command);
-  command.action((/** @type {unknown[]} */ ...argv) => {
+  command.action((...argv: unknown[]) => {
     // Commander passes declared arguments, then options, then the Command.
-    const options = /** @type {Record<string, unknown>} */ (argv.at(-2));
-    const args = /** @type {string[]} */ (argv.slice(0, -2));
+    const options = argv.at(-2) as Record<string, unknown>;
+    const args = argv.slice(0, -2) as string[][];
     return module.run(options, args.flat());
   });
 }
 
-/**
- * Register every command found under `dir` onto `program`.
- *
- * @param {Command} program
- * @param {string} dir
- * @returns {Promise<Route[]>}
- */
-export async function register(program, dir) {
+/** Register every command found under `dir` onto `program`. */
+export async function register(program: Command, dir: string): Promise<Route[]> {
   // Pass-through in a subcommand requires positional options on the program,
   // so that `devkit lint --fix` does not resolve `--fix` against devkit itself.
   program.enablePositionalOptions();
@@ -149,8 +114,7 @@ export async function register(program, dir) {
   const routes = await discover(dir);
 
   for (const route of routes) {
-    /** @type {CommandModule} */
-    const module = await load(route.file);
+    const module = await load<CommandModule>(route.file);
     const command = new Command(route.path.at(-1)).description(module.describe);
 
     if (module.kind === 'passthrough') applyPassthrough(command, module);

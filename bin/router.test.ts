@@ -9,18 +9,13 @@ import { fileURLToPath } from 'node:url';
 
 import { Command } from 'commander';
 
-import { discover, register } from './router.mjs';
+import type { CommandModule } from './command.ts';
+import { discover, register } from './router.ts';
 
 const COMMANDS = fileURLToPath(new URL('./commands', import.meta.url));
 
-/**
- * Every command path Commander actually ended up with, as dotted strings.
- *
- * @param {Command} command
- * @param {string[]} [prefix]
- * @returns {string[]}
- */
-function registered(command, prefix = []) {
+/** Every command path Commander actually ended up with, as dotted strings. */
+function registered(command: Command, prefix: string[] = []): string[] {
   return command.commands.flatMap((child) => {
     const path = [...prefix, child.name()];
     // `help` is Commander's own, not ours; groups contribute their children.
@@ -43,12 +38,12 @@ test('every discovered route becomes a registered command', async () => {
 test('the commands/ tree on disk matches the registered paths', async () => {
   // Deliberately re-walks the filesystem rather than reusing discover(), so a
   // bug in discover() cannot make this assertion agree with itself.
-  const onDisk = [];
+  const onDisk: string[] = [];
   for (const entry of await readdir(COMMANDS, { withFileTypes: true, recursive: true })) {
-    if (!entry.name.endsWith('.mjs') || entry.name.includes('.test.')) continue;
-    if (entry.name === 'index.mjs') continue; // group metadata, not a command
+    if (!entry.name.endsWith('.ts') || entry.name.includes('.test.')) continue;
+    if (entry.name === 'index.ts') continue; // group metadata, not a command
     const dir = entry.parentPath.slice(COMMANDS.length).split('/').filter(Boolean);
-    onDisk.push([...dir, entry.name.replace(/\.mjs$/, '')].join('.'));
+    onDisk.push([...dir, entry.name.replace(/\.ts$/, '')].join('.'));
   }
 
   const { program } = await build();
@@ -60,7 +55,7 @@ test('every command declares a known kind and a description', async () => {
   assert.ok(routes.length > 0, 'discovered no commands at all');
 
   for (const route of routes) {
-    const module = (await import(route.file)).default;
+    const module = (await import(route.file)).default as CommandModule;
     assert.ok(
       module.kind === 'passthrough' || module.kind === 'parsed',
       `${route.path.join(' ')} has kind ${String(module.kind)}`,
@@ -70,7 +65,7 @@ test('every command declares a known kind and a description', async () => {
 });
 
 test('a pass-through command accepts variadic arguments so nothing is dropped', async () => {
-  // Flag semantics are asserted behaviourally in devkit.test.mjs — Commander
+  // Flag semantics are asserted behaviourally in devkit.test.ts — Commander
   // keeps allowUnknownOption/passThroughOptions/helpOption on private fields,
   // and pinning those here would test the library rather than the router. What
   // belongs here is that the router gave the command somewhere to put argv.

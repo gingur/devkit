@@ -1,5 +1,7 @@
 // The CLI's contract end to end: subcommands reach the right tool, arguments
 // pass through untouched, and exit codes mean what they say.
+//
+// Spawns bin/devkit.mjs — the real bin, loader and all — not cli.ts directly.
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -8,8 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const CLI = fileURLToPath(new URL('./devkit.mjs', import.meta.url));
 
-/** @param {string[]} args */
-function devkit(args) {
+function devkit(args: string[]) {
   return spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' });
 }
 
@@ -46,8 +47,7 @@ test('a group named without a subcommand prints its help and exits 0', () => {
 });
 
 // One case per wrapped tool, proving the argument reached the intended tool.
-/** @type {[string, RegExp][]} */
-const WRAPPED = [
+const WRAPPED: [string, RegExp][] = [
   ['lint', /oxlint|oxlintrc/i],
   ['fmt', /oxfmt|format/i],
   ['staged', /lint-staged/i],
@@ -69,7 +69,6 @@ test('--help on a pass-through command reaches the tool, not devkit', () => {
 });
 
 test('--help on a parsed command is answered by devkit', () => {
-  // The converse of the above: parsed commands keep Commander's help.
   const { status, stdout, stderr } = devkit(['hooks', 'install', '--help']);
   assert.equal(status, 0);
   assert.match(stdout + stderr, /Install husky/i);

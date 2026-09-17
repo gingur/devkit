@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,12 +39,18 @@ export default {
       const path = join(dir, hook);
       copyFileSync(SHIM, path);
 
-      // NOT chmodSync. On Windows it cannot set a POSIX exec bit, and Git for
-      // Windows runs with core.filemode=false, so the tracked mode would be
-      // 100644 — and git skips a non-executable hook with only a `hint:` on
-      // stderr. A shim committed from Windows would therefore be silently
-      // inert for everyone, which is the exact failure this command exists to
-      // prevent. update-index --chmod is honoured regardless of core.filemode.
+      // Both modes, because they are different things and each fails alone.
+      //
+      // The filesystem bit is what git checks before RUNNING the hook here;
+      // copyFileSync does not carry it, and without this git skips the hook
+      // with only a `hint:` on stderr. Caught exactly that way on this repo.
+      chmodSync(path, 0o755);
+
+      // The tracked bit is what every OTHER checkout gets. On Windows
+      // chmodSync cannot set a POSIX bit and Git for Windows runs
+      // core.filemode=false, so the recorded mode would be 100644 and the shim
+      // would be inert for everyone. update-index --chmod is honoured
+      // regardless of core.filemode.
       git('update-index', '--add', '--chmod=+x', `${HOOKS_DIR}/${hook}`);
 
       // The shim runs the body and refuses when it is missing, so say so at

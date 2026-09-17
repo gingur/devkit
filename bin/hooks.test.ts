@@ -155,8 +155,19 @@ test('devkit hooks install writes the shim and points core.hooksPath at it', () 
   assert.equal(r.status, 0, r.stderr);
   assert.equal(git(dir, 'config', '--get', 'core.hooksPath'), '.githooks');
 
-  // The mode that matters is the one git RECORDS, not the one on disk.
-  assert.match(git(dir, 'ls-files', '-s', '.githooks/pre-commit'), /^100755 /);
+  // Both modes, because they are different things and each fails alone.
+  // Filesystem: what git checks before running the hook in THIS checkout —
+  // copyFileSync does not carry it, and dropping it made git skip devkit's own
+  // hook with only a `hint:`. Tracked: what every other checkout receives.
+  assert.ok(
+    statSync(join(dir, '.githooks', 'pre-commit')).mode & 0o111,
+    'shim is not executable on disk — git will skip it here',
+  );
+  assert.match(
+    git(dir, 'ls-files', '-s', '.githooks/pre-commit'),
+    /^100755 /,
+    'shim is not tracked executable — git will skip it everywhere else',
+  );
 });
 
 test('hooks install outside a git repository is a no-op, not a failed install', () => {

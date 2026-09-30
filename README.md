@@ -346,10 +346,10 @@ infisical scan git-changes --staged --config node_modules/@gingur/devkit/configs
 | Roll back production to a prior version (manual)        | `gingur/devkit/.github/workflows/cf.worker.rollback.yml@main`        |
 | Scan a PR's commits for leaked secrets                  | `gingur/devkit/.github/workflows/infisical.secrets.scan.yml@main`    |
 
-> Deploy, rollback, verify, and secret-scan accept an
-> optional `runner` input (a runner label, default `ubuntu-latest`). See
+> Every workflow here accepts an optional `runner` input (a runner label,
+> default `ubuntu-latest`). See
 > [Self-hosted runner (local)](#self-hosted-runner-local) for provisioning and
-> the routing policy — the preview workflows deliberately have no `runner` input.
+> the routing policy — a fork pull request never gets a self-hosted runner.
 
 ### Required permissions
 
@@ -422,15 +422,24 @@ policy below — only operator-gated triggers ever reach it.
 
 ### Routing policy (public repos)
 
-Only **operator-gated** triggers may target `local`:
+A public repo must never run a **fork's** code on a machine you own. Within
+that rule, `local` may take:
 
-- `push` to main — `cf.worker.deploy`;
-- `workflow_dispatch` — `cf.worker.rollback`.
+- operator-gated triggers — `push` to main (`cf.worker.deploy`) and
+  `workflow_dispatch` (`cf.worker.rollback`);
+- **same-repository** pull requests — preview, preview cleanup, verify and
+  secret scan. Only collaborators with write access can open these.
 
-Code-driven PR workflows (verify, preview, preview cleanup, secret scan)
-**always stay on GitHub-hosted runners** — a public repo must never run
-PR-driven code on a machine you own. `cf.worker.preview*.yml` deliberately
-have no `runner` input.
+Every PR-triggered job enforces the fork rule itself, at runner allocation, so a
+caller passing `runner: local` cannot opt out of it:
+
+| Workflow                                             | Fork pull request                                                                     |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `cf.worker.preview*.yml`                             | job skipped (`if:` guard below) — it could never fetch a credential anyway            |
+| `toolchain.verify.yml`, `infisical.secrets.scan.yml` | runs on `ubuntu-latest` regardless of `runner` — forks are still verified and scanned |
+
+Anyone with write access, bots included, still runs on `local` — the same trust
+the repo already extends to them.
 
 ### Consumer wiring
 

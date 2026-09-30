@@ -21,7 +21,10 @@ permissions:
 jobs:
   actions:
     name: Actions
-    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    # A fork pull request never allocates a self-hosted runner: on a public repo
+    # that would run contributor code on the operator's machine. Forks fall back
+    # to GitHub-hosted rather than skipping, so they are still checked.
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || vars.RUNNER || 'ubuntu-latest' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6

@@ -276,13 +276,16 @@ consumer that deliberately pins a tool as its own devDependency wins in its
 
 ### Self-hosted runner routing
 
-- **Only operator-gated triggers may target the `local` self-hosted runner:**
-  `push` to main (deploy) and `workflow_dispatch` (rollback). PR-triggered
-  workflows (verify, preview, preview cleanup, secret scan) always run
-  GitHub-hosted; `cf.worker.preview*.yml` deliberately expose no `runner`
-  input.
+- **A fork pull request never allocates the `local` self-hosted runner.**
+  Operator-gated triggers (`push` to main, `workflow_dispatch`) and
+  same-repository pull requests may target it. Each PR-triggered reusable
+  enforces this at allocation, so no caller input can bypass it:
+  `cf.worker.preview*.yml` skip fork PRs with a job-level `if:`;
+  `toolchain.verify.yml` and `infisical.secrets.scan.yml` resolve `runs-on` to
+  `ubuntu-latest` for them, so forks are still verified and scanned. A new
+  PR-triggered workflow with a `runner` input needs one of the two.
 - **Wiring:** set the repo variable `RUNNER=local` and pass
-  `runner: ${{ vars.RUNNER }}` in **every** caller workflow (deploy / rollback).
+  `runner: ${{ vars.RUNNER }}` in **every** caller workflow that should use it.
   A caller repo's
   variables do not resolve inside a cross-repo reusable workflow, so the
   reusables' own `vars.RUNNER` fallback only works for devkit's own direct
